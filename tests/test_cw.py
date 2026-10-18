@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from sepsim.constants import R_EARTH
-from sepsim.dynamics.cw import cw_propagate, mean_motion
+from sepsim.dynamics.cw import cw_propagate, mean_motion, propagate_with_separation
 
 A = R_EARTH + 500e3            # [m] cirkulär bana på 500 km höjd
 N = mean_motion(A)             # [rad/s]
@@ -37,3 +37,19 @@ def test_cross_track_is_pure_oscillation():
     assert np.allclose(states[:, 0], 0)    # x förblir 0
     assert np.allclose(states[:, 1], 0)    # y förblir 0
     assert np.max(np.abs(states[:, 2])) == pytest.approx(1.0 / N, rel=1e-3)
+
+
+def test_separation_time_shifts_trajectory():
+    """Satellit släppt vid 300 s = samma bana som släppt vid 0 s, förskjuten 300 s."""
+    state0 = [0, 0, 0, 1.0, 0, 0]
+    t = np.linspace(0, 2000, 2001)            # var 1:a sekund
+
+    delayed = propagate_with_separation(state0, N, t, t_sep=300)
+    immediate = cw_propagate(state0, N, t)
+
+    # 1. Före separationen: allt är noll
+    assert np.allclose(delayed[t < 300], 0)
+
+    # 2. Efter: samma bana, förskjuten 300 s
+    #    delayed vid t = 300 + k  ska vara lika med  immediate vid t = k
+    assert np.allclose(delayed[300:], immediate[:-300])
