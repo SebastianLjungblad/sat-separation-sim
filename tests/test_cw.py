@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from sepsim.constants import R_EARTH
-from sepsim.dynamics.cw import cw_propagate, mean_motion, propagate_with_separation
+from sepsim.dynamics.cw import cw_propagate, mean_motion, propagate_with_separation, separation_state
 
 A = R_EARTH + 500e3            # [m] cirkulär bana på 500 km höjd
 N = mean_motion(A)             # [rad/s]
@@ -53,3 +53,9 @@ def test_separation_time_shifts_trajectory():
     # 2. Efter: samma bana, förskjuten 300 s
     #    delayed vid t = 300 + k  ska vara lika med  immediate vid t = k
     assert np.allclose(delayed[300:], immediate[:-300])
+
+    def test_separation_state_has_requested_speed():
+        state = separation_state([3, 4, 0], speed=2.0)
+        assert np.allclose(state[:3], 0)                       # startar i dispensern
+        assert np.linalg.norm(state[3:]) == pytest.approx(2.0)  # rätt fart
+        assert np.allclose(state[3:], [1.2, 1.6, 0])           # rätt riktning

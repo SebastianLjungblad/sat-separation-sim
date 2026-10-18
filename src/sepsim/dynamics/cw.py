@@ -68,3 +68,15 @@ def propagate_with_separation(state0: np.ndarray, n: float, t: np.ndarray, t_sep
     states[released] = cw_propagate(state0, n, t[released] - t_sep)
 
     return states
+
+
+def separation_state(direction, speed: float = 1.0) -> np.ndarray:
+    """
+    Starttillstånd precis efter separation: position i dispensern,
+    hastighet med given fart [m/s] i given riktning (behöver inte vara normerad).
+
+    direction: [dx, dy, dz] i LVLH
+    """
+    d = np.asarray(direction, dtype=float)
+    v = speed * d / np.linalg.norm(d)
+    return np.array([0.0, 0.0, 0.0, *v])
