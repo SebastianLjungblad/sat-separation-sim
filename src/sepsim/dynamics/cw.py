@@ -46,3 +46,25 @@ def cw_propagate(state0: np.ndarray, n: float, t: np.ndarray) -> np.ndarray:
     vz = -n * s * z0 + c * vz0
 
     return np.column_stack([x, y, z, vx, vy, vz])
+
+
+def propagate_with_separation(state0: np.ndarray, n: float, t: np.ndarray, t_sep: float) -> np.ndarray:
+    """
+    Propagerar en satellit som separeras från dispensern vid t_sep.
+
+    Före t_sep: satelliten sitter på dispensern (tillstånd = 0).
+    Efter t_sep: CW-rörelse med tiden räknad från separationen.
+
+    state0: tillstånd precis efter separation [x, y, z, vx, vy, vz], form (6,)
+    n:      medelrörelse [rad/s]
+    t:      tidpunkter [s] från uppdragets start, form (N,)
+    t_sep:  separationstidpunkt [s]
+    Returnerar: form (N, 6)
+    """
+    t = np.atleast_1d(np.asarray(t, dtype=float))
+    states = np.zeros((len(t), 6))
+
+    released = t >= t_sep
+    states[released] = cw_propagate(state0, n, t[released] - t_sep)
+
+    return states
