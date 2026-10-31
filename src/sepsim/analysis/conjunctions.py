@@ -19,25 +19,22 @@ def pairwise_distances(positions: np.ndarray) -> tuple[list[tuple[int, int]], np
 
     return pairs, np.array(distances)
 
-def closest_approach(distances: np.ndarray, t: np.ndarray, after: float = 0.0) -> tuple[np.ndarray, np.ndarray]:
+def closest_approach(
+    distances: np.ndarray, t: np.ndarray, after: float | np.ndarray = 0.0
+) -> tuple[np.ndarray, np.ndarray]:
     """
-    Minsta avstånd per par och tidpunkten då det inträffar,
-    räknat bara för tidpunkter t >= after.
+    Minsta avstånd per par och tidpunkten då det inträffar.
 
-    distances: form (antal_par, N_tidpunkter)
-    t:         form (N_tidpunkter,)
-    after:     frigångstid [s], tidpunkter före den ignoreras
-    Returnerar: (min_avstånd [m], tid_för_min [s]), båda med form (antal_par,)
+    after: frigångstid [s], antingen ett tal (samma för alla par)
+           eller en array med ett värde per par.
     """
-    if after > t[-1]:
-        raise ValueError("after är större än simuleringens längd")
+    after = np.broadcast_to(np.asarray(after, dtype=float), (distances.shape[0],))
+    if np.any(after > t[-1]):
+        raise ValueError("after är större än simuleringens längd för minst ett par")
 
-    mask = t >= after
-    d_after = distances[:, mask]
-    t_after = t[mask]
+    valid = t[np.newaxis, :] >= after[:, np.newaxis]     # mask, form (antal_par, N)
+    d = np.where(valid, distances, np.inf)                # ogiltiga tider → oändligt
 
-    idx = np.argmin(d_after, axis=1)
-    min_dist = d_after.min(axis=1)
-    t_min = t_after[idx]
-
-    return min_dist, t_min
+    idx = np.argmin(d, axis=1)
+    min_dist = d[np.arange(len(idx)), idx]
+    return min_dist, t[idx]
