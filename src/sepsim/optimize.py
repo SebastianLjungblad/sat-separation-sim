@@ -7,6 +7,7 @@ from sepsim.constants import R_EARTH
 from sepsim.dynamics.cw import mean_motion
 from sepsim.dynamics.separation import direction_from_angles, propagate_mission, release_times
 from sepsim.scenario import Mission
+from scipy.optimize import differential_evolution
 
 
 def apply_plan(mission: Mission, params: np.ndarray) -> Mission:

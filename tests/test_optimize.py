@@ -3,6 +3,7 @@ import pytest
 
 from sepsim.optimize import apply_plan, min_separation
 from sepsim.scenario import load_mission
+from sepsim.optimize import optimize_plan
 
 
 def test_scenario1_is_unsafe():
@@ -31,3 +32,14 @@ def test_apply_plan_keeps_masses_and_does_not_change_original():
 
     assert [s.mass for s in planned.satellites] == [s.mass for s in mission.satellites]
     assert mission.satellites[0].direction == original_direction    # originalet orört
+
+    from sepsim.optimize import optimize_plan
+
+
+def test_optimizer_beats_naive_plan():
+    mission = load_mission("scenarios/scenario1.toml")
+    best_mission, best_score = optimize_plan(mission, maxiter=20)   # kort körning för testet
+
+    assert best_score > 100.0
+    assert best_score > min_separation(mission)
+    assert best_score == pytest.approx(min_separation(best_mission))   # betyget stämmer
