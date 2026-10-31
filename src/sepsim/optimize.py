@@ -53,3 +53,32 @@ def min_separation(mission: Mission, clearance: float = 600.0,
     min_dist, _ = closest_approach(distances, t, after=after)
 
     return float(min_dist.min())    # det sämsta paret
+
+def optimize_plan(
+    mission: Mission,
+    min_gap: float = 30.0,
+    max_gap: float = 300.0,
+    clearance: float = 600.0,
+    maxiter: int = 150,
+    popsize: int = 15,
+    seed: int = 0,
+) -> tuple[Mission, float]:
+    """
+    Söker den separationsplan (riktningar och mellanrum) som maximerar
+    det minsta avståndet mellan alla par av objekt.
+
+    Returnerar (bästa uppdrag, dess minsta avstånd [m]).
+    """
+    n_sats = len(mission.satellites)
+
+    # Gränser: (az, el) per satellit, sedan ett mellanrum per separation efter den första
+    bounds = [(-180.0, 180.0), (-90.0, 90.0)] * n_sats + [(min_gap, max_gap)] * (n_sats - 1)
+
+    def objective(params: np.ndarray) -> float:
+        # Optimeraren MINIMERAR, så vi ger den minus avståndet
+        return -min_separation(apply_plan(mission, params), clearance=clearance)
+
+    result = differential_evolution(
+        objective, bounds, maxiter=maxiter, popsize=popsize, seed=seed, tol=1e-6, polish=False
+    )
+    return apply_plan(mission, result.x), -result.fun
