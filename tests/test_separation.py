@@ -3,6 +3,8 @@ import pytest
 
 from sepsim.dynamics.separation import separation_kicks
 from sepsim.scenario import Mission, Satellite
+from sepsim.dynamics.separation import direction_from_angles
+
 
 
 def make_mission(stage_mass: float = 1200.0) -> Mission:
@@ -65,3 +67,22 @@ def test_kicks_are_returned_in_separation_order():
 
     names = [sat.name for sat, _, _ in separation_kicks(mission)]
     assert names == ["Sat 1", "Sat 2", "Sat 3"]
+
+@pytest.mark.parametrize(
+    "az, el, expected",
+    [
+        (0, 0, [0, 1, 0]),       # framåt
+        (90, 0, [1, 0, 0]),      # utåt
+        (180, 0, [0, -1, 0]),    # bakåt
+        (-90, 0, [-1, 0, 0]),    # inåt
+        (0, 90, [0, 0, 1]),      # åt sidan
+        (123, 90, [0, 0, 1]),    # åt sidan, oavsett azimut
+    ],
+)
+def test_direction_from_angles_known_directions(az, el, expected):
+    assert np.allclose(direction_from_angles(az, el), expected, atol=1e-12)
+
+
+@pytest.mark.parametrize("az, el", [(37, -20), (-150, 45), (10, 89)])
+def test_direction_from_angles_is_unit_vector(az, el):
+    assert np.linalg.norm(direction_from_angles(az, el)) == pytest.approx(1.0)

@@ -45,3 +45,19 @@ def propagate_mission(mission: Mission, n: float, t: np.ndarray) -> tuple[list[s
         states.append(own + inherited)
 
     return names, np.stack(states)
+
+
+def direction_from_angles(azimuth_deg: float, elevation_deg: float) -> np.ndarray:
+    """
+    Enhetsvektor i LVLH från azimut (i banplanet, 0° = framåt, 90° = utåt)
+    och elevation (ut ur banplanet, 90° = tvärs banan).
+    """
+
+    az = np.radians(azimuth_deg)
+    el = np.radians(elevation_deg)
+
+    x = np.cos(el)*np.sin(az)
+    y = np.cos(el)*np.cos(az)
+    z = np.sin(el)
+
+    return np.array([x, y, z])
