@@ -1,9 +1,8 @@
 import numpy as np
 import pytest
 
-from sepsim.optimize import apply_plan, min_separation
+from sepsim.optimize import apply_plan, min_separation, optimize_plan
 from sepsim.scenario import load_mission
-from sepsim.optimize import optimize_plan
 
 
 def test_scenario1_is_unsafe():
@@ -16,7 +15,7 @@ def test_scenario2_is_safe():
 
 def test_apply_plan_sets_directions_and_times():
     mission = load_mission("scenarios/scenario1.toml")
-    params = [0, 0, 90, 0, 180, 0, 60, 90]      # framåt, utåt, bakåt; mellanrum 60 och 90 s
+    params = [0, 0, 90, 0, 180, 0, 60, 90]  # framåt, utåt, bakåt; mellanrum 60 och 90 s
     planned = apply_plan(mission, params)
 
     assert [s.t_sep for s in planned.satellites] == [0.0, 60.0, 150.0]
@@ -31,15 +30,15 @@ def test_apply_plan_keeps_masses_and_does_not_change_original():
     planned = apply_plan(mission, [0, 0, 90, 0, 180, 0, 60, 90])
 
     assert [s.mass for s in planned.satellites] == [s.mass for s in mission.satellites]
-    assert mission.satellites[0].direction == original_direction    # originalet orört
-
-    from sepsim.optimize import optimize_plan
+    assert mission.satellites[0].direction == original_direction  # originalet orört
 
 
 def test_optimizer_beats_naive_plan():
     mission = load_mission("scenarios/scenario1.toml")
-    best_mission, best_score = optimize_plan(mission, maxiter=20)   # kort körning för testet
+    best_mission, best_score = optimize_plan(
+        mission, maxiter=20
+    )  # kort körning för testet
 
     assert best_score > 100.0
     assert best_score > min_separation(mission)
-    assert best_score == pytest.approx(min_separation(best_mission))   # betyget stämmer
+    assert best_score == pytest.approx(min_separation(best_mission))  # betyget stämmer

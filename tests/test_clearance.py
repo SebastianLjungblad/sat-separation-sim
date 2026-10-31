@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 
 from sepsim.analysis.conjunctions import closest_approach, pairwise_distances
 from sepsim.constants import R_EARTH
@@ -19,24 +18,38 @@ def late_separation_mission() -> Mission:
         altitude=500e3,
         stage_mass=1200.0,
         satellites=[
-            Satellite("Sat 1", mass=150.0, spring_impulse=150.0, direction=(0, 1, 0), t_sep=0.0),
-            Satellite("Sat 2", mass=150.0, spring_impulse=150.0, direction=(0, -1, 0), t_sep=900.0),
+            Satellite(
+                "Sat 1",
+                mass=150.0,
+                spring_impulse=150.0,
+                direction=(0, 1, 0),
+                t_sep=0.0,
+            ),
+            Satellite(
+                "Sat 2",
+                mass=150.0,
+                spring_impulse=150.0,
+                direction=(0, -1, 0),
+                t_sep=900.0,
+            ),
         ],
     )
 
 
 def test_release_times_in_propagation_order():
     mission = late_separation_mission()
-    mission.satellites.reverse()          # ordningen i filen ska inte spela roll
+    mission.satellites.reverse()  # ordningen i filen ska inte spela roll
     assert np.allclose(release_times(mission), [0.0, 0.0, 900.0])
 
 
 def test_closest_approach_accepts_one_clearance_per_pair():
     t_short = np.array([0.0, 600.0, 1200.0, 1800.0, 5700.0])
-    distances = np.array([
-        [1.0, 120.0, 450.0, 300.0, 2.0],
-        [1.0, 200.0, 900.0, 1600.0, 2500.0],
-    ])
+    distances = np.array(
+        [
+            [1.0, 120.0, 450.0, 300.0, 2.0],
+            [1.0, 200.0, 900.0, 1600.0, 2500.0],
+        ]
+    )
     min_dist, t_min = closest_approach(distances, t_short, after=[600.0, 1200.0])
 
     assert np.allclose(min_dist, [2.0, 900.0])

@@ -1,10 +1,8 @@
 import numpy as np
 import pytest
 
-from sepsim.dynamics.separation import separation_kicks
+from sepsim.dynamics.separation import direction_from_angles, separation_kicks
 from sepsim.scenario import Mission, Satellite
-from sepsim.dynamics.separation import direction_from_angles
-
 
 
 def make_mission(stage_mass: float = 1200.0) -> Mission:
@@ -13,9 +11,27 @@ def make_mission(stage_mass: float = 1200.0) -> Mission:
         altitude=500e3,
         stage_mass=stage_mass,
         satellites=[
-            Satellite("Sat 1", mass=150.0, spring_impulse=120.0, direction=(1, 0, 0), t_sep=0.0),
-            Satellite("Sat 2", mass=150.0, spring_impulse=120.0, direction=(0, 1, 0), t_sep=60.0),
-            Satellite("Sat 3", mass=150.0, spring_impulse=120.0, direction=(0, 1, 1), t_sep=120.0),
+            Satellite(
+                "Sat 1",
+                mass=150.0,
+                spring_impulse=120.0,
+                direction=(1, 0, 0),
+                t_sep=0.0,
+            ),
+            Satellite(
+                "Sat 2",
+                mass=150.0,
+                spring_impulse=120.0,
+                direction=(0, 1, 0),
+                t_sep=60.0,
+            ),
+            Satellite(
+                "Sat 3",
+                mass=150.0,
+                spring_impulse=120.0,
+                direction=(0, 1, 1),
+                t_sep=120.0,
+            ),
         ],
     )
 
@@ -26,7 +42,7 @@ def test_momentum_is_conserved_at_each_separation():
     kicks = separation_kicks(mission)
 
     for k, (sat, dv_sat, dv_stack) in enumerate(kicks):
-        m_rest = mission.stage_mass + sum(s.mass for s, _, _ in kicks[k + 1:])
+        m_rest = mission.stage_mass + sum(s.mass for s, _, _ in kicks[k + 1 :])
         total_momentum = sat.mass * dv_sat + m_rest * dv_stack
         assert np.allclose(total_momentum, 0)
 
@@ -40,7 +56,9 @@ def test_satellite_speed_is_impulse_over_mass():
 def test_stack_recoils_opposite_to_satellite():
     """Stacken får rekyl rakt mot satellitens riktning."""
     for _, dv_sat, dv_stack in separation_kicks(make_mission()):
-        cos_angle = np.dot(dv_sat, dv_stack) / (np.linalg.norm(dv_sat) * np.linalg.norm(dv_stack))
+        cos_angle = np.dot(dv_sat, dv_stack) / (
+            np.linalg.norm(dv_sat) * np.linalg.norm(dv_stack)
+        )
         assert cos_angle == pytest.approx(-1.0)
 
 
@@ -50,8 +68,8 @@ def test_recoil_grows_as_stack_gets_lighter():
     recoil_speeds = [np.linalg.norm(dv_stack) for _, _, dv_stack in kicks]
 
     assert recoil_speeds[0] < recoil_speeds[1] < recoil_speeds[2]
-    assert recoil_speeds[0] == pytest.approx(120.0 / 1500.0)   # steg + 2 satelliter kvar
-    assert recoil_speeds[2] == pytest.approx(120.0 / 1200.0)   # bara steget kvar
+    assert recoil_speeds[0] == pytest.approx(120.0 / 1500.0)  # steg + 2 satelliter kvar
+    assert recoil_speeds[2] == pytest.approx(120.0 / 1200.0)  # bara steget kvar
 
 
 def test_heavy_stage_gives_no_recoil():
@@ -68,15 +86,16 @@ def test_kicks_are_returned_in_separation_order():
     names = [sat.name for sat, _, _ in separation_kicks(mission)]
     assert names == ["Sat 1", "Sat 2", "Sat 3"]
 
+
 @pytest.mark.parametrize(
     "az, el, expected",
     [
-        (0, 0, [0, 1, 0]),       # framåt
-        (90, 0, [1, 0, 0]),      # utåt
-        (180, 0, [0, -1, 0]),    # bakåt
-        (-90, 0, [-1, 0, 0]),    # inåt
-        (0, 90, [0, 0, 1]),      # åt sidan
-        (123, 90, [0, 0, 1]),    # åt sidan, oavsett azimut
+        (0, 0, [0, 1, 0]),  # framåt
+        (90, 0, [1, 0, 0]),  # utåt
+        (180, 0, [0, -1, 0]),  # bakåt
+        (-90, 0, [-1, 0, 0]),  # inåt
+        (0, 90, [0, 0, 1]),  # åt sidan
+        (123, 90, [0, 0, 1]),  # åt sidan, oavsett azimut
     ],
 )
 def test_direction_from_angles_known_directions(az, el, expected):

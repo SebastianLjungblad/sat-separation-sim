@@ -2,7 +2,10 @@ from itertools import combinations
 
 import numpy as np
 
-def pairwise_distances(positions: np.ndarray) -> tuple[list[tuple[int, int]], np.ndarray]:
+
+def pairwise_distances(
+    positions: np.ndarray,
+) -> tuple[list[tuple[int, int]], np.ndarray]:
     """
     positions: form (antal_objekt, N_tidpunkter, 3)
     Returnerar: lista med par (i, j) och avstånd med form (antal_par, N_tidpunkter)
@@ -19,6 +22,7 @@ def pairwise_distances(positions: np.ndarray) -> tuple[list[tuple[int, int]], np
 
     return pairs, np.array(distances)
 
+
 def closest_approach(
     distances: np.ndarray, t: np.ndarray, after: float | np.ndarray = 0.0
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -32,8 +36,8 @@ def closest_approach(
     if np.any(after > t[-1]):
         raise ValueError("after är större än simuleringens längd för minst ett par")
 
-    valid = t[np.newaxis, :] >= after[:, np.newaxis]     # mask, form (antal_par, N)
-    d = np.where(valid, distances, np.inf)                # ogiltiga tider → oändligt
+    valid = t[np.newaxis, :] >= after[:, np.newaxis]  # mask, form (antal_par, N)
+    d = np.where(valid, distances, np.inf)  # ogiltiga tider → oändligt
 
     idx = np.argmin(d, axis=1)
     min_dist = d[np.arange(len(idx)), idx]

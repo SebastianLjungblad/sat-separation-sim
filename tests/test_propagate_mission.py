@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 
 from sepsim.constants import R_EARTH
 from sepsim.dynamics.cw import mean_motion, propagate_with_separation
@@ -17,9 +16,27 @@ def make_mission(stage_mass: float = 1200.0) -> Mission:
         altitude=500e3,
         stage_mass=stage_mass,
         satellites=[
-            Satellite("Sat 1", mass=150.0, spring_impulse=120.0, direction=(1, 0, 0), t_sep=0.0),
-            Satellite("Sat 2", mass=80.0, spring_impulse=120.0, direction=(0, 1, 0), t_sep=60.0),
-            Satellite("Sat 3", mass=200.0, spring_impulse=120.0, direction=(1, -1, 1), t_sep=120.0),
+            Satellite(
+                "Sat 1",
+                mass=150.0,
+                spring_impulse=120.0,
+                direction=(1, 0, 0),
+                t_sep=0.0,
+            ),
+            Satellite(
+                "Sat 2",
+                mass=80.0,
+                spring_impulse=120.0,
+                direction=(0, 1, 0),
+                t_sep=60.0,
+            ),
+            Satellite(
+                "Sat 3",
+                mass=200.0,
+                spring_impulse=120.0,
+                direction=(1, -1, 1),
+                t_sep=120.0,
+            ),
         ],
     )
 
@@ -74,4 +91,4 @@ def test_stage_drifts_because_of_recoil():
     _, states = propagate_mission(make_mission(), N, t)
 
     final_distance = np.linalg.norm(states[0, -1, :3])
-    assert final_distance > 100.0     # [m] efter 1,5 varv
+    assert final_distance > 100.0  # [m] efter 1,5 varv

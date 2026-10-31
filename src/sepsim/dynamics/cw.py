@@ -37,7 +37,12 @@ def cw_propagate(state0: np.ndarray, n: float, t: np.ndarray) -> np.ndarray:
 
     # Positioner
     x = (4 - 3 * c) * x0 + (s / n) * vx0 + (2 / n) * (1 - c) * vy0
-    y = 6 * (s - nt) * x0 + y0 + (2 / n) * (c - 1) * vx0 + (1 / n) * (4 * s - 3 * nt) * vy0
+    y = (
+        6 * (s - nt) * x0
+        + y0
+        + (2 / n) * (c - 1) * vx0
+        + (1 / n) * (4 * s - 3 * nt) * vy0
+    )
     z = c * z0 + (s / n) * vz0
 
     # Hastigheter (tidsderivator av positionerna ovan)
@@ -48,7 +53,9 @@ def cw_propagate(state0: np.ndarray, n: float, t: np.ndarray) -> np.ndarray:
     return np.column_stack([x, y, z, vx, vy, vz])
 
 
-def propagate_with_separation(state0: np.ndarray, n: float, t: np.ndarray, t_sep: float) -> np.ndarray:
+def propagate_with_separation(
+    state0: np.ndarray, n: float, t: np.ndarray, t_sep: float
+) -> np.ndarray:
     """
     Propagerar en satellit som separeras från dispensern vid t_sep.
 

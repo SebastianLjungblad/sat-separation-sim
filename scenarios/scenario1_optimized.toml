@@ -1,0 +1,24 @@
+name = "scenario1 (optimized)"
+altitude_km = 500
+stage_mass_kg = 1200
+
+[[satellites]]
+name = "Sat 1"
+mass_kg = 150
+spring_impulse_Ns = 150
+direction = [0.829438, 0.466541, -0.307201]     # azimuth 60.6°, elevation -17.9°
+t_sep_s = 0.0
+
+[[satellites]]
+name = "Sat 2"
+mass_kg = 150
+spring_impulse_Ns = 150
+direction = [0.930177, 0.068446, 0.360674]     # azimuth 85.8°, elevation 21.1°
+t_sep_s = 296.6
+
+[[satellites]]
+name = "Sat 3"
+mass_kg = 150
+spring_impulse_Ns = 150
+direction = [0.877644, 0.435744, -0.199670]     # azimuth 63.6°, elevation -11.5°
+t_sep_s = 580.3

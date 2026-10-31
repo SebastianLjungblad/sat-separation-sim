@@ -10,18 +10,13 @@ from pathlib import Path
 
 import numpy as np
 
-from sepsim.analysis.conjunctions import closest_approach, pairwise_distances
-from sepsim.constants import R_EARTH
-from sepsim.dynamics.cw import mean_motion
-from sepsim.dynamics.separation import propagate_mission
+from sepsim.analysis.mission import analyze_mission
 from sepsim.scenario import load_mission
 from sepsim.viz.plots import plot_distances, plot_trajectories
 
-# --- Analysinställningar (flyttas till scenariofilen senare) ---
-SAFETY = 10.0           # [m] säkerhetsavstånd
-CLEARANCE = 600.0       # [s] frigångstid som ignoreras i analysen
-N_ORBITS = 1.5          # antal varv att simulera
-N_SAMPLES = 5000        # antal tidpunkter
+SAFETY = 10.0  # [m] säkerhetsavstånd
+CLEARANCE = 600.0  # [s] frigångstid efter varje separation
+N_ORBITS = 1.5  # antal varv att simulera efter sista separationen
 
 RESULTS = Path("results")
 
@@ -32,38 +27,29 @@ def main(scenario_path: str) -> None:
     with open(path, "rb") as f:
         title = tomllib.load(f).get("name", path.stem)
 
-    n = mean_motion(R_EARTH + mission.altitude)
-    T = 2 * np.pi / n
-    t = np.linspace(0, N_ORBITS * T, N_SAMPLES)
+    result = analyze_mission(mission, clearance=CLEARANCE, n_orbits=N_ORBITS)
+    names = result.names
 
-    # --- Simulering ---
-    names, states = propagate_mission(mission, n, t)
-    positions = states[:, :, :3]
-
-    # --- Analys ---
-    pairs, distances = pairwise_distances(positions)
-    min_dist, t_min = closest_approach(distances, t, after=CLEARANCE)
-
-    print(f"{title}")
-    print(f"Orbital period: {T / 60:.1f} min\n")
-    for (i, j), d, tm in zip(pairs, min_dist, t_min):
+    print(title)
+    print(f"Orbital period: {result.period / 60:.1f} min\n")
+    for (i, j), d, tm in zip(result.pairs, result.min_dist, result.t_min):
         status = "RISK" if d < SAFETY else "ok"
-        print(f"{names[i]:>6} – {names[j]:<6}  min {d:9.1f} m at {tm / 60:6.1f} min  [{status}]")
+        print(
+            f"{names[i]:>6} – {names[j]:<6}  min {d:9.1f} m at {tm / 60:6.1f} min  [{status}]"
+        )
 
-    stage_end = positions[0, -1]
-    print(f"\nStage displacement from reference point after {N_ORBITS:g} orbits: "
-          f"{np.linalg.norm(stage_end):.0f} m  (x={stage_end[0]:.0f}, y={stage_end[1]:.0f}, z={stage_end[2]:.0f})")
+    stage_end = result.positions[0, -1]
+    print(
+        f"\nStage displacement from reference point at end of simulation: "
+        f"{np.linalg.norm(stage_end):.0f} m  (x={stage_end[0]:.0f}, y={stage_end[1]:.0f}, z={stage_end[2]:.0f})"
+    )
 
-    # --- Grafer ---
     RESULTS.mkdir(exist_ok=True)
     stem = path.stem
-
-    fig = plot_distances(pairs, distances, t, names, safety=SAFETY)
+    fig = plot_distances(result.pairs, result.distances, result.t, names, safety=SAFETY)
     fig.savefig(RESULTS / f"{stem}_distances.png", dpi=150)
-
-    fig = plot_trajectories(positions, names)
+    fig = plot_trajectories(result.positions, names)
     fig.savefig(RESULTS / f"{stem}_trajectories.png", dpi=150)
-
     print(f"\nFigures saved to {RESULTS}/{stem}_*.png")
 
 

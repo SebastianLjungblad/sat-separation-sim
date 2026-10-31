@@ -15,10 +15,12 @@ def plot_distances(pairs, distances, t, labels, safety=10.0):
     fig, ax = plt.subplots(figsize=(10, 5))
 
     for (i, j), d in zip(pairs, distances):
-        d_plot = np.where(d > 0, d, np.nan)       # log-skala klarar inte 0
+        d_plot = np.where(d > 0, d, np.nan)  # log-skala klarar inte 0
         ax.plot(t / 60, d_plot, label=f"{labels[i]}–{labels[j]}")
 
-    ax.axhline(safety, color="red", linestyle="--", label=f"Safety distance ({safety:g} m)")
+    ax.axhline(
+        safety, color="red", linestyle="--", label=f"Safety distance ({safety:g} m)"
+    )
 
     ax.set_yscale("log")
     ax.set_xlabel("Time since mission start [min]")
@@ -28,6 +30,7 @@ def plot_distances(pairs, distances, t, labels, safety=10.0):
     ax.legend()
     fig.tight_layout()
     return fig
+
 
 def plot_trajectories(positions, labels):
     """

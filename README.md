@@ -15,7 +15,41 @@ returns to the dispenser after one orbit, and a satellite pushed forward ends
 up *behind* it. This project explores how separation sequence, direction and
 velocity affect the minimum distance between objects.
 
-## Results (v0.2)
+## Headline result: optimized separation plan (v0.3)
+
+Same hardware — 500 km orbit, 1200 kg upper stage, three 150 kg satellites with
+150 N·s springs (1 m/s each). The optimizer chooses only the separation
+directions and the time between separations.
+
+| Naive plan (scenario 1) | Optimized plan |
+|---|---|
+| ![Naive plan](docs/images/scenario1_trajectories.png) | ![Optimized plan](docs/images/scenario1_optimized_trajectories.png) |
+| Radial pushes, 60 s apart. All objects return close together after one orbit. **Worst pair: 0.4 m.** | Mostly radial pushes with small, *different* along-track components, ~5 min apart. Nothing returns. **Worst pair: 770 m.** |
+
+**The optimized plan** (`scenarios/scenario1_optimized.toml`), translated to physics:
+
+| Satellite | Released | Outward | Forward | Sideways | Drift behind per orbit |
+|---|---|---|---|---|---|
+| Sat 1 | 0 s | 0.83 m/s | 0.47 m/s | −0.31 m/s | ≈ 7.9 km |
+| Sat 2 | 297 s | 0.93 m/s | 0.07 m/s | +0.36 m/s | ≈ 1.2 km |
+| Sat 3 | 580 s | 0.88 m/s | 0.44 m/s | −0.20 m/s | ≈ 7.4 km |
+
+**What the optimizer found:**
+- **Mostly outward pushes.** A radial push opens distance fastest in the first
+  minutes after separation.
+- **A small along-track component that differs between satellites.** It changes
+  each satellite's orbital period by a different amount, so they drift apart at
+  different rates and never return to each other or to the stage.
+- **It uses the recoil.** All satellites are pushed roughly the same way, so the
+  three recoils add up and push the stage inward and backward into a lower,
+  faster orbit. The stage drifts ≈ 4 km *ahead*, out of the satellites' way.
+- **Long gaps between separations** (~290 s, close to the 300 s limit). The
+  constraint is active — allowing longer gaps would likely improve the result.
+- **Several pairs end up at almost exactly the same distance** (~770 m). This is
+  typical of a max-min optimum: the worst pair is improved until another pair
+  becomes equally bad, and the plan ends up balanced.
+
+## Why direction matters (v0.2)
 
 Same orbit (500 km), same upper stage (1200 kg), same satellites (150 kg, spring
 impulse 150 N·s → exactly 1 m/s each). Only the separation directions differ.
@@ -91,8 +125,14 @@ and a close-up view following the dispenser).
 - [x] Mission propagation with the stage moving (superposition of CW responses)
 - [x] Scenarios loaded from TOML files, one generic run script
 
+**v0.3 — done**
+- [x] Separation direction as azimuth and elevation
+- [x] Clearance time per pair, measured from the later separation in the pair
+- [x] Objective function: minimum distance of the worst pair (max-min)
+- [x] Optimizer for separation directions and gaps (differential evolution)
+- [x] Optimized plan saved as a TOML scenario; shared analysis code for optimizer and run script
+
 **Planned**
-- [ ] v0.3 — Separation plan optimization (timing and direction)
 - [ ] v0.4 — Numerical propagator with J2 and atmospheric drag; CW vs. full model comparison
 - [ ] v0.5 — JSON export and web-based 3D visualization
 - [ ] v0.6 — Monte Carlo collision probability and robust optimization
@@ -133,8 +173,30 @@ trajectory is the sum of all recoils; a satellite inherits the recoils from
 satellites released before it, plus its own push from its separation time.
 
 **Conjunction analysis:** distances are computed between all pairs of objects
-(upper stage included) at every sample time. Minimum distance is evaluated after
-a clearance time, so that the initial proximity at separation is not counted.
+(upper stage included) at every sample time. For each pair, the minimum distance
+is evaluated from a clearance time (default 600 s) after the *later* of the two
+separations, so that the proximity right after a separation is not counted as a
+collision — even when a satellite is released late in the sequence.
+
+**Optimization:** a plan is described by two angles per satellite and the gap
+between consecutive separations:
+
+    [az_1, el_1, ..., az_n, el_n, gap_2, ..., gap_n]
+
+- Azimuth: angle in the orbital plane from along-track (0° forward, 90° outward)
+- Elevation: angle out of the orbital plane (90° cross-track)
+- Gaps between separations are bounded (default 30–300 s); the release order
+  is the order in the scenario file
+
+Masses and spring impulses are fixed by the hardware. The objective is to
+**maximize the minimum distance of the worst pair** — an average would hide a
+single dangerous pair.
+
+The objective is non-smooth (the worst pair switches), has jumps (sampled times,
+clearance windows) and many local optima (satellites can swap roles), so a
+gradient-based method is a poor fit. `scipy.optimize.differential_evolution` is
+used instead: derivative-free and global, at the cost of many evaluations
+(~18 000 plans, ~30 s), which the fast analytic CW model makes affordable.
 
 **Assumptions and limitations:**
 - Circular reference orbit
@@ -145,7 +207,14 @@ a clearance time, so that the initial proximity at separation is not counted.
 - Point masses: attitude and physical size of the objects are not modelled
 - Closest approach is found among sampled times only; the true minimum may lie
   between samples (default ~1.7 s spacing)
-- Results are only valid within the simulated time window
+- Results are only valid within the simulated time window (1.5 orbits after
+  the last separation)
+- For most pairs in the optimized plan, the minimum occurs right when the
+  clearance time ends. The score therefore mainly measures how fast objects
+  separate, plus that none return — the choice of clearance time affects the result
+- Release order is fixed; only directions and gaps are optimized
+- All directions are allowed; real dispensers restrict which directions are
+  physically possible
 - All units SI (m, s, kg)
 
 ## Validation
@@ -167,6 +236,11 @@ a clearance time, so that the initial proximity at separation is not counted.
 | Centre of mass of all objects | Stays at the reference point at all times (internal forces only) |
 | Satellite before its separation | Identical state to the upper stage |
 | Scenario loading | TOML values parsed correctly, km converted to m |
+| Direction from angles | 0° → forward, 90° → outward, 180° → backward, elevation 90° → cross-track; always unit length |
+| Late separation | Not reported as a collision with per-pair clearance (would be with a single clearance time) |
+| Plan parameters | Angles and gaps mapped to directions and separation times; masses unchanged; original mission not modified |
+| Objective | Scenario 1 scored as unsafe (< 10 m), scenario 2 as safe (> 100 m) |
+| Optimizer | Beats the naive plan; reported score matches re-evaluation of the returned plan |
 
 ## Getting started
 
@@ -177,9 +251,15 @@ uv sync
 uv run pytest                                                 # run all tests
 uv run python examples/run_scenario.py scenarios/scenario1.toml   # radial separations
 uv run python examples/run_scenario.py scenarios/scenario2.toml   # along-track separations
+
+# Optimize the separation plan for the satellites in scenario 1 (~30 s)
+uv run python examples/optimize_scenario.py scenarios/scenario1.toml
+uv run python examples/run_scenario.py scenarios/scenario1_optimized.toml
 ```
 
-Figures are written to `results/`. To create a new scenario, copy a TOML file
+Figures are written to `results/`. The optimizer uses the hardware in the
+scenario file (masses, springs, stage mass, release order) and writes the best
+plan to `scenarios/<name>_optimized.toml`. To create a new scenario, copy a TOML file
 in `scenarios/` and change the values — no code changes needed:
 
 ```toml
@@ -201,25 +281,31 @@ t_sep_s = 0
 src/sepsim/
 ├── constants.py            # physical constants with sources
 ├── scenario.py             # Satellite and Mission data classes, TOML loading
+├── optimize.py             # plan parameters, objective, optimizer
 ├── dynamics/
 │   ├── cw.py               # Clohessy–Wiltshire propagation, separation times
-│   └── separation.py       # separation kicks with recoil, mission propagation
+│   └── separation.py       # separation kicks with recoil, mission propagation, angles
 ├── analysis/
-│   └── conjunctions.py     # pairwise distances, closest approach
+│   ├── conjunctions.py     # pairwise distances, closest approach (per-pair clearance)
+│   └── mission.py          # shared mission analysis used by optimizer and run script
 └── viz/
     └── plots.py            # distance and trajectory plots
 scenarios/
-├── scenario1.toml          # radial separations
-└── scenario2.toml          # separations with along-track component
+├── scenario1.toml              # radial separations
+├── scenario2.toml              # separations with along-track component
+└── scenario1_optimized.toml    # optimized plan for the scenario 1 hardware
 examples/
-└── run_scenario.py         # run any scenario: simulation, analysis, plots
+├── run_scenario.py         # analyse any scenario: simulation, analysis, plots
+└── optimize_scenario.py    # optimize a plan and save it as a scenario
 tests/
 ├── test_constants.py
 ├── test_cw.py
 ├── test_conjunctions.py
+├── test_clearance.py
 ├── test_separation.py
 ├── test_propagate_mission.py
-└── test_scenario.py
+├── test_scenario.py
+└── test_optimize.py
 docs/images/                # figures used in this README
 ```
 
