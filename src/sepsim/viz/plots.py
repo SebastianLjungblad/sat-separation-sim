@@ -31,23 +31,17 @@ def plot_distances(pairs, distances, t, labels, safety=10.0):
 
 def plot_trajectories(positions, labels):
     """
-    Banor relativt dispensern i banplanet (y längs banan, x radiellt).
-
-    positions: form (antal_objekt, N, 3), objekt 0 = dispensern
-    labels:    namn på objekten, t.ex. ["Dispenser", "Sat 1", "Sat 2"]
+    Banor relativt referenspunkten i banplanet (y längs banan, x radiellt).
+    Alla objekt ritas, även steget (objekt 0), eftersom det nu rör sig av rekylen.
     """
     fig, ax = plt.subplots(figsize=(10, 6))
-
-    for k in range(1, positions.shape[0]):     # börja på 1: hoppa över dispensern
-        y = positions[k, :, 1]                 # längs banan
-        x = positions[k, :, 0]                 # radiellt
-        ax.plot(y, x, label=labels[k])
-
-    ax.plot(0, 0, "k^", markersize=10, label=labels[0])   # dispensern i origo
-
+    for k in range(positions.shape[0]):
+        style = {"color": "black", "linestyle": "--"} if k == 0 else {}
+        ax.plot(positions[k, :, 1], positions[k, :, 0], label=labels[k], **style)
+    ax.plot(0, 0, "k+", markersize=12, label="Reference point")
     ax.set_xlabel("Along-track y [m]")
     ax.set_ylabel("Radial x [m]")
-    ax.set_title("Trajectories relative to dispenser (orbital plane)")
+    ax.set_title("Trajectories relative to reference orbit (orbital plane)")
     ax.grid(True, alpha=0.3)
     ax.legend()
     fig.tight_layout()

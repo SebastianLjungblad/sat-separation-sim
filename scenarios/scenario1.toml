@@ -1,0 +1,24 @@
+name = "Scenario 1: radial separations"
+altitude_km = 500
+stage_mass_kg = 1200
+
+[[satellites]]
+name = "Sat 1"
+mass_kg = 150
+spring_impulse_Ns = 150     # 150 / 150 = 1,0 m/s
+direction = [1, 0, 0]       # rakt utåt
+t_sep_s = 0
+
+[[satellites]]
+name = "Sat 2"
+mass_kg = 150
+spring_impulse_Ns = 150
+direction = [-1, 0, 0]      # rakt inåt
+t_sep_s = 60
+
+[[satellites]]
+name = "Sat 3"
+mass_kg = 150
+spring_impulse_Ns = 150
+direction = [1, 0, 1]       # utåt + tvärs banan
+t_sep_s = 120
