@@ -49,6 +49,49 @@ directions and the time between separations.
   typical of a max-min optimum: the worst pair is improved until another pair
   becomes equally bad, and the plan ends up balanced.
 
+## How long can the CW model be trusted? (v0.4)
+
+The optimizer uses the fast analytic CW model. To check it, the same mission is
+propagated numerically around the Earth (ECI frame) with the perturbations CW
+leaves out, switched on one at a time. The plot shows the largest error in any
+pair distance, CW compared with the numerical model, over three days:
+
+![CW vs numerical model](docs/images/scenario1_optimized_model_comparison.png)
+
+| Numerical model | CW error > 10 m after | Error after 3 days | Minimum distance |
+|---|---|---|---|
+| Two-body (round Earth) | 5.9 h | 84 m | 781 m |
+| + J2 only | 0.9 h | 1.3 km | 781 m |
+| + drag only | 2.5 h | 8.1 km | 781 m |
+| J2 + drag | 0.9 h | 7.5 km | 781 m |
+| J2 + drag, high solar activity | 0.9 h | 25 km | 781 m |
+| *CW (reference)* | | | *781 m* |
+
+**Findings:**
+- **CW's own linearization error is small.** With a round Earth, the error is
+  under 100 m after three days, although the objects are then tens of km apart.
+  It grows with the square of the separation, as expected for a linearized model.
+- **J2 gives an early, bounded error.** It passes 10 m within an hour, then
+  oscillates with the orbital period and grows slowly. A likely contributor is
+  that, with J2, the initial circular-orbit velocity gives a slightly eccentric
+  orbit, while CW assumes a perfectly circular one.
+- **Drag dominates over time.** Objects with different area-to-mass ratios are
+  braked by different amounts, and the resulting along-track drift grows with
+  time squared: ≈ 8 km after three days, ≈ 25 km at high solar activity.
+- **The plan's safety is unaffected.** The minimum distance is the same in all
+  models, because it occurs in the first 10–20 minutes after separation, when
+  CW is accurate to centimetres. The large errors appear only once the objects
+  are already kilometres apart.
+
+**Conclusion:** CW is adequate for planning the separation itself and the first
+orbits, which is where the collision risk is. Predicting where the satellites
+are after days requires the numerical model, and drag is the dominant effect.
+This supports the approach used here: optimize quickly with CW, verify with
+the full model.
+
+(Minimum distance is 781 m rather than 770 m because 3 000 samples over three
+days give one sample every 86 s, so the minimum is resolved more coarsely.)
+
 ## Why direction matters (v0.2)
 
 Same orbit (500 km), same upper stage (1200 kg), same satellites (150 kg, spring
@@ -132,8 +175,16 @@ and a close-up view following the dispenser).
 - [x] Optimizer for separation directions and gaps (differential evolution)
 - [x] Optimized plan saved as a TOML scenario; shared analysis code for optimizer and run script
 
+**v0.4 — done**
+- [x] Coordinate conversions between ECI and LVLH (including the rotating-frame term)
+- [x] Force models: two-body gravity, J2, atmospheric drag (exponential atmosphere,
+  co-rotating air, solar activity levels), individually switchable
+- [x] Numerical propagation of every object in ECI with impulsive separations
+- [x] New scenario parameters with defaults: inclination, object areas, drag coefficients
+- [x] Comparison of CW against the numerical model, perturbation by perturbation
+- [x] Verification that the optimized plan holds in the full model
+
 **Planned**
-- [ ] v0.4 — Numerical propagator with J2 and atmospheric drag; CW vs. full model comparison
 - [ ] v0.5 — JSON export and web-based 3D visualization
 - [ ] v0.6 — Monte Carlo collision probability and robust optimization
 
@@ -198,11 +249,36 @@ gradient-based method is a poor fit. `scipy.optimize.differential_evolution` is
 used instead: derivative-free and global, at the cost of many evaluations
 (~18 000 plans, ~30 s), which the fast analytic CW model makes affordable.
 
+**Numerical model (v0.4):** every object is propagated in the Earth-centred
+inertial frame (ECI) with Newton's second law, integrated with
+`scipy.integrate.solve_ivp` (DOP853, relative tolerance 10⁻¹²; high precision is
+needed to resolve metres at 6 878 km from the Earth's centre). Accelerations:
+
+| Force | Model | Magnitude at 500 km |
+|---|---|---|
+| Gravity | −μ r / \|r\|³ | 8.4 m/s² |
+| J2 (Earth's oblateness) | standard zonal J2 term | ≈ 0.012 m/s² |
+| Drag | −½ ρ (C_d A / m) \|v_rel\| v_rel, atmosphere co-rotating with the Earth | ≈ 10⁻⁷–10⁻⁶ m/s² |
+
+Air density uses an exponential model around 500 km (Vallado), scaled by an
+approximate factor for low/medium/high solar activity. Separations are applied
+as instantaneous velocity changes in the stack's LVLH frame at the moment of
+separation. Results are converted to LVLH relative to a reference point
+propagated with the same gravity model (without drag), so that all analysis and
+plotting code is shared with the CW model.
+
+Because only *differences* between objects affect relative motion, J2 — about
+10 000 times stronger than drag — has a smaller long-term effect than drag:
+J2 acts almost equally on objects close together, while drag depends on each
+object's area-to-mass ratio.
+
 **Assumptions and limitations:**
-- Circular reference orbit
-- Relative distances small compared to orbit radius
-- No perturbations (J2, drag, solar radiation pressure), to be added in the
-  numerical model
+- CW model: circular reference orbit, relative distances small compared to
+  orbit radius, no perturbations (quantified against the numerical model above)
+- Numerical model: simple exponential atmosphere with a rough solar activity
+  factor (no real-time solar indices); no solar radiation pressure, third-body
+  gravity or higher-order gravity terms (J3, J4, …); constant drag coefficient
+  and cross-section (no attitude-dependent area)
 - Separations are instantaneous impulses (no spring stroke duration, no tip-off rotation)
 - Point masses: attitude and physical size of the objects are not modelled
 - Closest approach is found among sampled times only; the true minimum may lie
@@ -241,6 +317,14 @@ used instead: derivative-free and global, at the cost of many evaluations
 | Plan parameters | Angles and gaps mapped to directions and separation times; masses unchanged; original mission not modified |
 | Objective | Scenario 1 scored as unsafe (< 10 m), scenario 2 as safe (> 100 m) |
 | Optimizer | Beats the naive plan; reported score matches re-evaluation of the returned plan |
+| Circular orbit state | Correct position, speed √(μ/r), velocity perpendicular to position |
+| LVLH basis | Proper rotation matrix (orthonormal, right-handed); forward = velocity direction |
+| ECI ↔ LVLH | Round trip returns the input; 1 km outward at rest in LVLH = n · 1000 m/s faster in ECI |
+| Gravity and J2 | μ/r² towards the centre; J2 inward at the equator, outward over the pole, ≈ 10⁻³ of gravity |
+| Drag | Opposes motion; density falls with altitude and rises with solar activity |
+| Two-body integration | Circular orbit stays circular; energy conserved to 10⁻¹⁰ |
+| Numerical vs. CW | Agree within 5 cm for small separations; CW error grows with the square of the separation |
+| Differential drag | A light object with large area ends up *ahead* of a compact stage after one day |
 
 ## Getting started
 
@@ -257,9 +341,26 @@ uv run python examples/optimize_scenario.py scenarios/scenario1.toml
 uv run python examples/run_scenario.py scenarios/scenario1_optimized.toml
 ```
 
+# Compare CW with the numerical model over 3 days (~1 min)
+uv run python examples/compare_models.py scenarios/scenario1_optimized.toml 3
+```
+
 Figures are written to `results/`. The optimizer uses the hardware in the
 scenario file (masses, springs, stage mass, release order) and writes the best
-plan to `scenarios/<name>_optimized.toml`. To create a new scenario, copy a TOML file
+plan to `scenarios/<name>_optimized.toml`.
+
+Optional scenario parameters for the numerical model (defaults in brackets):
+
+```toml
+inclination_deg = 97.4          # [97.4] sun-synchronous at 500 km
+stage_area_m2 = 10.0            # [10.0]
+stage_drag_coefficient = 2.2    # [2.2]
+
+[[satellites]]
+# ...
+area_m2 = 1.0                   # [1.0]
+drag_coefficient = 2.2          # [2.2]
+``` To create a new scenario, copy a TOML file
 in `scenarios/` and change the values — no code changes needed:
 
 ```toml
@@ -284,7 +385,10 @@ src/sepsim/
 ├── optimize.py             # plan parameters, objective, optimizer
 ├── dynamics/
 │   ├── cw.py               # Clohessy–Wiltshire propagation, separation times
-│   └── separation.py       # separation kicks with recoil, mission propagation, angles
+│   ├── separation.py       # separation kicks with recoil, mission propagation, angles
+│   ├── frames.py           # ECI ↔ LVLH conversions
+│   ├── forces.py           # gravity, J2, atmospheric drag
+│   └── propagator.py       # numerical propagation of a whole mission
 ├── analysis/
 │   ├── conjunctions.py     # pairwise distances, closest approach (per-pair clearance)
 │   └── mission.py          # shared mission analysis used by optimizer and run script
@@ -296,7 +400,8 @@ scenarios/
 └── scenario1_optimized.toml    # optimized plan for the scenario 1 hardware
 examples/
 ├── run_scenario.py         # analyse any scenario: simulation, analysis, plots
-└── optimize_scenario.py    # optimize a plan and save it as a scenario
+├── optimize_scenario.py    # optimize a plan and save it as a scenario
+└── compare_models.py       # CW vs numerical model, perturbation by perturbation
 tests/
 ├── test_constants.py
 ├── test_cw.py
@@ -305,7 +410,10 @@ tests/
 ├── test_separation.py
 ├── test_propagate_mission.py
 ├── test_scenario.py
-└── test_optimize.py
+├── test_optimize.py
+├── test_frames.py
+├── test_forces.py
+└── test_propagator.py
 docs/images/                # figures used in this README
 ```
 
