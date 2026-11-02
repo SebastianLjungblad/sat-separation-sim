@@ -49,3 +49,23 @@ def plot_trajectories(positions, labels):
     ax.legend()
     fig.tight_layout()
     return fig
+
+
+def plot_model_comparison(t, errors, safety=10.0):
+    """
+    CW:s fel jämfört med den numeriska modellen, över tid, en kurva per kraftmodell.
+
+    errors: dict {etikett: största felet i avstånd över alla par [m], form (N,)}
+    """
+    fig, ax = plt.subplots(figsize=(10, 5))
+    for label, err in errors.items():
+        ax.plot(t / 86400, np.where(err > 0, err, np.nan), label=label)
+    ax.axhline(safety, color="red", linestyle="--", label=f"Safety distance ({safety:g} m)")
+    ax.set_yscale("log")
+    ax.set_xlabel("Time since mission start [days]")
+    ax.set_ylabel("Largest error in pair distance, CW vs numerical [m]")
+    ax.set_title("How long can the CW model be trusted?")
+    ax.grid(True, which="both", alpha=0.3)
+    ax.legend(loc="lower right")
+    fig.tight_layout()
+    return fig
