@@ -1,6 +1,7 @@
 """Långtidsanalys med den numeriska modellen: minsta avstånd under flera dygn."""
 
-from concurrent.futures import ProcessPoolExecutor
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 
 import numpy as np
@@ -60,23 +61,34 @@ class RobustRow:
 
 
 def rank_robust(candidates: list[tuple[Mission, float]], days: float = 7.0,
-                levels: tuple[str, ...] = SOLAR_LEVELS, workers: int | None = None) -> list[RobustRow]:
+                levels: tuple[str, ...] = SOLAR_LEVELS, workers: int | None = None,
+                progress=None) -> list[RobustRow]:
     """
     Prövar varje kandidatplan med den numeriska modellen vid varje solaktivitet,
     och sorterar dem efter sämsta fall (störst först).
     Luftens täthet är den mest osäkra parametern, så planen ska klara alla nivåer.
-    """
-    missions = [m for m, _ in candidates]
-    jobs = [(m, level) for m in missions for level in levels]
-    with ProcessPoolExecutor(max_workers=workers) as pool:
-        futures = [pool.submit(long_term_min_separation, m, days, ForceModel(solar_activity=level))
-                   for m, level in jobs]
-        results = [f.result() for f in futures]
 
-    rows = []
-    for c, (mission, cw_score) in enumerate(candidates):
-        per_level = {level: results[c * len(levels) + k] for k, level in enumerate(levels)}
-        rows.append(RobustRow(mission, cw_score, per_level))
+    progress: valfri funktion progress(klara, totalt) som anropas när en simulering är klar.
+    """
+    jobs = [(c, level) for c in range(len(candidates)) for level in levels]
+    results: dict[tuple[int, str], LongTermResult] = {}
+
+    # "spawn" startar nya Python-processer på samma sätt på macOS, Linux och Windows
+    context = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(max_workers=workers, mp_context=context) as pool:
+        futures = {
+            pool.submit(long_term_min_separation, candidates[c][0], days, ForceModel(solar_activity=level)): (c, level)
+            for c, level in jobs
+        }
+        for done, future in enumerate(as_completed(futures), start=1):
+            results[futures[future]] = future.result()
+            if progress is not None:
+                progress(done, len(jobs))
+
+    rows = [
+        RobustRow(mission, cw_score, {level: results[(c, level)] for level in levels})
+        for c, (mission, cw_score) in enumerate(candidates)
+    ]
     return sorted(rows, key=lambda row: row.worst_case, reverse=True)
 
 

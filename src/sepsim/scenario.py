@@ -47,3 +47,33 @@ def load_mission(path: str | Path) -> Mission:
         stage_area=data.get("stage_area_m2", 10.0),
         stage_drag_coefficient=data.get("stage_drag_coefficient", 2.2),
     )
+
+
+def mission_to_toml(mission: Mission, name: str) -> str:
+    """Uppdraget som TOML-text, i samma format som load_mission läser."""
+    import numpy as np
+
+    lines = [
+        f'name = "{name}"',
+        f"altitude_km = {mission.altitude / 1000:g}",
+        f"stage_mass_kg = {mission.stage_mass:g}",
+        f"inclination_deg = {mission.inclination_deg:g}",
+        f"stage_area_m2 = {mission.stage_area:g}",
+        f"stage_drag_coefficient = {mission.stage_drag_coefficient:g}",
+    ]
+    for sat in mission.satellites:
+        d = np.asarray(sat.direction, dtype=float) / np.linalg.norm(sat.direction)
+        az = np.degrees(np.arctan2(d[0], d[1]))
+        el = np.degrees(np.arcsin(d[2]))
+        lines += [
+            "",
+            "[[satellites]]",
+            f'name = "{sat.name}"',
+            f"mass_kg = {sat.mass:g}",
+            f"spring_impulse_Ns = {sat.spring_impulse:g}",
+            f"area_m2 = {sat.area:g}",
+            f"drag_coefficient = {sat.drag_coefficient:g}",
+            f"direction = [{d[0]:.6f}, {d[1]:.6f}, {d[2]:.6f}]     # azimuth {az:.1f}°, elevation {el:.1f}°",
+            f"t_sep_s = {sat.t_sep:.1f}",
+        ]
+    return "\n".join(lines) + "\n"

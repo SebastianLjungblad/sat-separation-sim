@@ -39,8 +39,8 @@ def plot_trajectories(positions, labels):
     """
     fig, ax = plt.subplots(figsize=(10, 6))
     for k in range(positions.shape[0]):
-        style = {"color": "black", "linestyle": "--"} if k == 0 else {}
-        ax.plot(positions[k, :, 1], positions[k, :, 0], label=labels[k], **style)
+        style = {"color": "gray", "linestyle": "--"} if k == 0 else {}
+        ax.plot(0, 0, "+", color="gray", markersize=12, label="Reference point")
     ax.plot(0, 0, "k+", markersize=12, label="Reference point")
     ax.set_xlabel("Along-track y [m]")
     ax.set_ylabel("Radial x [m]")

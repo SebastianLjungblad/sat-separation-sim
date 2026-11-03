@@ -81,25 +81,27 @@ def optimize_plan(
     )
     return apply_plan(mission, result.x), -result.fun
 
-def optimize_candidates(
-    mission: Mission,
-    n_candidates: int = 20,
-    min_gap: float = 30.0,
-    max_gap: float = 300.0,
-    clearance: float = 600.0,
-    maxiter: int = 150,
-    popsize: int = 15,
-    seed: int = 0,
-) -> list[tuple[Mission, float]]:
-    """Kör CW-optimeraren och returnerar de n_candidates bästa planerna, bäst först."""
+def optimize_candidates(mission, n_candidates=20, min_gap=30.0, max_gap=300.0, clearance=600.0,
+                        maxiter=150, popsize=15, seed=0, progress=None):
+    """
+    Kör CW-optimeraren och returnerar de n_candidates bästa planerna, bäst först.
+    progress: valfri funktion progress(omgång, max_omgångar, bästa_avstånd) som anropas varje omgång.
+    """
     n_sats = len(mission.satellites)
     bounds = [(-180.0, 180.0), (-90.0, 90.0)] * n_sats + [(min_gap, max_gap)] * (n_sats - 1)
 
-    def objective(params: np.ndarray) -> float:
+    def objective(params):
         return -min_separation(apply_plan(mission, params), clearance=clearance)
 
-    result = differential_evolution(
-        objective, bounds, maxiter=maxiter, popsize=popsize, seed=seed, tol=1e-6, polish=False
-    )
+    iteration = 0
+
+    def callback(intermediate_result):
+        nonlocal iteration
+        iteration += 1
+        if progress is not None:
+            progress(iteration, maxiter, -intermediate_result.fun)
+
+    result = differential_evolution(objective, bounds, maxiter=maxiter, popsize=popsize, seed=seed,
+                                    tol=1e-6, polish=False, callback=callback)
     order = np.argsort(result.population_energies)[:n_candidates]
     return [(apply_plan(mission, result.population[i]), -result.population_energies[i]) for i in order]

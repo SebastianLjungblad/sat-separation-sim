@@ -76,3 +76,8 @@ def release_times(mission: Mission) -> np.ndarray:
     """Släpptid [s] per objekt i samma ordning som propagate_mission: steget först (0 s)."""
     sats = sorted(mission.satellites, key=lambda s: s.t_sep)
     return np.array([0.0] + [s.t_sep for s in sats])
+
+def angles_from_direction(direction) -> tuple[float, float]:
+    """Omvänd till direction_from_angles: riktning → (azimut, elevation) i grader."""
+    x, y, z = np.asarray(direction, dtype=float) / np.linalg.norm(direction)
+    return float(np.degrees(np.arctan2(x, y))), float(np.degrees(np.arcsin(z)))

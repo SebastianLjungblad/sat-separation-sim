@@ -21,3 +21,18 @@ def test_number_of_satellites_can_change():
     at.slider[1].set_value(5).run()                       # andra reglaget = antal satelliter
     assert not at.exception
     assert len(at.dataframe[0].value) == 5
+
+
+def test_optimization_runs_and_shows_results():
+    """Kort optimering (få generationer, få kandidater, 3 dygn) från knapptryck till detaljvy."""
+    at = AppTest.from_file(APP, default_timeout=600).run()
+    at.slider[2].set_value(3)                     # kandidater
+    at.slider[3].set_value(3)                     # dygn
+    at.slider[-1].set_value(5)                    # generationer (Advanced)
+    at.run()
+    at.button[0].click().run()
+
+    assert not at.exception
+    assert len(at.dataframe) == 3                 # uppdraget, kandidaterna, den valda planen
+    assert len(at.dataframe[1].value) == 3        # tre kandidater
+    assert at.metric[3].label == "CW score (first orbits)"
