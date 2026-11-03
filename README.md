@@ -15,6 +15,36 @@ returns to the dispenser after one orbit, and a satellite pushed forward ends
 up *behind* it. This project explores how separation sequence, direction and
 velocity affect the minimum distance between objects.
 
+## Interactive planner app (v0.5)
+
+![Start page of the planner app](docs/images/app_start.png)
+
+A Streamlit app that turns the library into a planning tool. In the sidebar you
+choose the orbit, the upper stage and 2–5 satellites, either from a catalogue of
+typical types (3U/6U/12U CubeSats, microsat with solar panels, compact smallsat)
+or with your own mass, area and drag coefficient. One click then runs the
+two-stage optimization:
+
+1. **CW optimizer** – differential evolution searches separation directions and
+   gaps that maximize the closest approach during the first orbits.
+2. **Numerical check** – the best candidates are propagated for up to three weeks
+   with J2 and drag at low, medium and high solar activity, in parallel on all
+   CPU cores, and ranked by their worst case.
+
+![Candidate plans and plan details](docs/images/app_results.png)
+
+The result is a table of candidate plans. Click a row to see the separation
+times and angles, key figures, plots for the first orbits and the whole
+numerical check, and to download the plan as a TOML scenario. With the default
+inputs (500 km, 1200 kg stage, a 100 kg microsat with 4 m² panels, a 12 kg 6U
+CubeSat and a 200 kg compact satellite) the robust choice keeps every pair at
+least **539 m** apart over 7 days, against **400 m** for the plan CW alone rates
+highest.
+
+```bash
+uv run streamlit run app/streamlit_app.py
+```
+
 ## Headline result: optimized separation plan (v0.3)
 
 Same hardware — 500 km orbit, 1200 kg upper stage, three 150 kg satellites with
@@ -233,9 +263,19 @@ and a close-up view following the dispenser).
 - [x] Parallel evaluation on all CPU cores
 - [x] Mixed rideshare scenario (large panels, CubeSat, compact satellite)
 
+**v0.5 — done**
+- [x] Streamlit app: orbit, upper stage and 2–5 satellites as inputs
+- [x] Satellite catalogue with typical masses, areas and drag coefficients
+- [x] Two-stage optimization from the app with progress reporting
+- [x] Candidate table with robust choice and CW favourite, clickable plan details
+- [x] Plan export as TOML scenario, plots for the first orbits and the numerical check
+- [x] End-to-end app test (Streamlit AppTest)
+
 **Planned**
-- [ ] v0.5 — JSON export and web-based 3D visualization
-- [ ] v0.6 — Monte Carlo collision probability and robust optimization
+- [ ] v0.6 — 3D visualization in the app: rotating Earth with ECI axes, launch and
+  separation animation, orbits over three weeks with time controls, LVLH close-up
+  of close passes
+- [ ] v0.7 — Monte Carlo collision probability (spring and attitude uncertainty)
 
 **Future work**
 - Upper-stage collision avoidance manoeuvre after deployment
@@ -383,14 +423,19 @@ Requires [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync
-uv run pytest                                                 # run all tests
+uv run pytest                                                 # run all tests (~1 min)
+uv run streamlit run app/streamlit_app.py                     # the planner app
+```
+
+The examples run the same analyses from the command line:
+
+```bash
 uv run python examples/run_scenario.py scenarios/scenario1.toml   # radial separations
 uv run python examples/run_scenario.py scenarios/scenario2.toml   # along-track separations
 
 # Optimize the separation plan for the satellites in scenario 1 (~30 s)
 uv run python examples/optimize_scenario.py scenarios/scenario1.toml
 uv run python examples/run_scenario.py scenarios/scenario1_optimized.toml
-```
 
 # Compare CW with the numerical model over 3 days (~1 min)
 uv run python examples/compare_models.py scenarios/scenario1_optimized.toml 3
@@ -403,39 +448,37 @@ Figures are written to `results/`. The optimizer uses the hardware in the
 scenario file (masses, springs, stage mass, release order) and writes the best
 plan to `scenarios/<name>_optimized.toml`.
 
-Optional scenario parameters for the numerical model (defaults in brackets):
-
-```toml
-inclination_deg = 97.4          # [97.4] sun-synchronous at 500 km
-stage_area_m2 = 10.0            # [10.0]
-stage_drag_coefficient = 2.2    # [2.2]
-
-[[satellites]]
-# ...
-area_m2 = 1.0                   # [1.0]
-drag_coefficient = 2.2          # [2.2]
-``` To create a new scenario, copy a TOML file
-in `scenarios/` and change the values — no code changes needed:
+To create a new scenario, copy a TOML file in `scenarios/` and change the
+values – no code changes needed (optional parameters with defaults in brackets):
 
 ```toml
 name = "Scenario 1: radial separations"
 altitude_km = 500
 stage_mass_kg = 1200
+inclination_deg = 97.4          # [97.4] sun-synchronous at 500 km
+stage_area_m2 = 10.0            # [10.0]
+stage_drag_coefficient = 2.2    # [2.2]
 
 [[satellites]]
 name = "Sat 1"
 mass_kg = 150
 spring_impulse_Ns = 150
-direction = [1, 0, 0]       # LVLH: radial, along-track, cross-track
+direction = [1, 0, 0]           # LVLH: radial, along-track, cross-track
 t_sep_s = 0
+area_m2 = 1.0                   # [1.0]
+drag_coefficient = 2.2          # [2.2]
 ```
 
 ## Project structure
 
 ```
+app/
+└── streamlit_app.py        # the planner app
+.streamlit/config.toml      # dark theme for the app
 src/sepsim/
 ├── constants.py            # physical constants with sources
-├── scenario.py             # Satellite and Mission data classes, TOML loading
+├── scenario.py             # Satellite and Mission data classes, TOML loading and saving
+├── catalog.py              # satellite types and app inputs → Mission
 ├── optimize.py             # plan parameters, objective, optimizer
 ├── dynamics/
 │   ├── cw.py               # Clohessy–Wiltshire propagation, separation times
@@ -448,7 +491,8 @@ src/sepsim/
 │   ├── mission.py          # shared mission analysis used by optimizer and run script
 │   └── long_term.py        # multi-day numerical analysis, robust ranking
 └── viz/
-    └── plots.py            # distance and trajectory plots
+    ├── plots.py            # distance and trajectory plots
+    └── space_theme.py      # starry background and dark plot style for the app
 scenarios/
 ├── scenario1.toml              # radial separations
 ├── scenario2.toml              # separations with along-track component
@@ -473,7 +517,9 @@ tests/
 ├── test_frames.py
 ├── test_forces.py
 ├── test_propagator.py
-└── test_long_term.py
+├── test_long_term.py
+├── test_catalog.py
+└── test_app.py             # runs the app end to end with Streamlit AppTest
 docs/images/                # figures used in this README
 ```
 
