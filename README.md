@@ -92,6 +92,49 @@ the full model.
 (Minimum distance is 781 m rather than 770 m because 3 000 samples over three
 days give one sample every 86 s, so the minimum is resolved more coarsely.)
 
+## Late encounters that CW cannot see (v0.4.1)
+
+CW knows nothing about air. For satellites with *different* area-to-mass
+ratios, differential drag changes their drift over days, and objects that
+separated cleanly can come back towards each other. This is tested with a mixed
+rideshare (`scenarios/scenario3_mixed.toml`): a 100 kg satellite with large
+solar panels (4 m²), a 12 kg 6U CubeSat (0.06 m²) and a compact 200 kg
+satellite (1.5 m²), all separated at 1 m/s.
+
+**Two-stage selection:**
+1. The CW optimizer returns its 20 best plans for the first orbits (14 s).
+2. Each plan is propagated numerically (J2 + drag) for 7 days at low, medium
+   and high solar activity — air density is the most uncertain input — in
+   parallel on all CPU cores (60 runs, 88 s).
+3. The plan with the best **worst case** over all three levels is chosen.
+
+| | CW score | Low | Medium | High | **Worst case** |
+|---|---|---|---|---|---|
+| CW favourite | 741 m | 741 m | 636 m | 400 m | **400 m** |
+| Robust choice | 741 m | 741 m | 671 m | 596 m | **596 m** |
+| Worst of the 20 candidates | 741 m | 741 m | 44 m | 37 m | **37 m** |
+
+**Findings:**
+- **CW cannot tell the plans apart.** All 20 candidates score 741 m in the CW
+  model, yet over a week their worst case ranges from **37 m to 596 m**.
+- **The same late encounter occurs in every plan.** About three days after
+  separation, the satellite with large solar panels — braked most by the air —
+  sinks, speeds up and catches up with the upper stage from behind. At low solar
+  activity the drag is too weak for this to happen within a week.
+- **Selection changes how close the pass is, not whether it happens.** The
+  miss distance depends on where in its relative ellipse the satellite happens
+  to be at the moment of the pass, which is sensitive to small differences.
+  The robust choice improves the worst case from 400 m to 596 m; at medium
+  activity the two plans are almost identical:
+
+![CW favourite vs robust choice](docs/images/scenario3_mixed_robust_comparison.png)
+
+**Conclusion:** the tool finds a risk the simplified model misses, quantifies it
+under uncertainty, and picks the plan that does best in the worst case. Avoiding
+the encounter altogether would need something beyond separation design — a
+different release order or an upper-stage avoidance manoeuvre after deployment,
+which is how such encounters are handled in practice.
+
 ## Why direction matters (v0.2)
 
 Same orbit (500 km), same upper stage (1200 kg), same satellites (150 kg, spring
@@ -183,6 +226,12 @@ and a close-up view following the dispenser).
 - [x] New scenario parameters with defaults: inclination, object areas, drag coefficients
 - [x] Comparison of CW against the numerical model, perturbation by perturbation
 - [x] Verification that the optimized plan holds in the full model
+
+**v0.4.1 — done**
+- [x] Long-term analysis with the numerical model (closest pass over several days)
+- [x] Two-stage selection: CW candidates ranked by numerical worst case over solar activity levels
+- [x] Parallel evaluation on all CPU cores
+- [x] Mixed rideshare scenario (large panels, CubeSat, compact satellite)
 
 **Planned**
 - [ ] v0.5 — JSON export and web-based 3D visualization
@@ -325,6 +374,8 @@ object's area-to-mass ratio.
 | Two-body integration | Circular orbit stays circular; energy conserved to 10⁻¹⁰ |
 | Numerical vs. CW | Agree within 5 cm for small separations; CW error grows with the square of the separation |
 | Differential drag | A light object with large area ends up *ahead* of a compact stage after one day |
+| Long-term analysis | Agrees with the CW objective over short times without perturbations |
+| Robust ranking | Worst case is the smallest of the CW score and all solar levels; candidates sorted by it |
 
 ## Getting started
 
@@ -343,6 +394,9 @@ uv run python examples/run_scenario.py scenarios/scenario1_optimized.toml
 
 # Compare CW with the numerical model over 3 days (~1 min)
 uv run python examples/compare_models.py scenarios/scenario1_optimized.toml 3
+
+# Two-stage robust optimization: CW candidates + 7-day numerical check (~2 min)
+uv run python examples/optimize_robust.py scenarios/scenario3_mixed.toml
 ```
 
 Figures are written to `results/`. The optimizer uses the hardware in the
@@ -391,17 +445,22 @@ src/sepsim/
 │   └── propagator.py       # numerical propagation of a whole mission
 ├── analysis/
 │   ├── conjunctions.py     # pairwise distances, closest approach (per-pair clearance)
-│   └── mission.py          # shared mission analysis used by optimizer and run script
+│   ├── mission.py          # shared mission analysis used by optimizer and run script
+│   └── long_term.py        # multi-day numerical analysis, robust ranking
 └── viz/
     └── plots.py            # distance and trajectory plots
 scenarios/
 ├── scenario1.toml              # radial separations
 ├── scenario2.toml              # separations with along-track component
-└── scenario1_optimized.toml    # optimized plan for the scenario 1 hardware
+├── scenario1_optimized.toml    # optimized plan for the scenario 1 hardware
+├── scenario3_mixed.toml        # mixed rideshare: large panels, CubeSat, compact
+├── scenario3_mixed_optimized.toml  # CW favourite for scenario 3
+└── scenario3_mixed_robust.toml     # robust choice for scenario 3
 examples/
 ├── run_scenario.py         # analyse any scenario: simulation, analysis, plots
 ├── optimize_scenario.py    # optimize a plan and save it as a scenario
-└── compare_models.py       # CW vs numerical model, perturbation by perturbation
+├── compare_models.py       # CW vs numerical model, perturbation by perturbation
+└── optimize_robust.py      # two-stage optimization: CW candidates + numerical worst case
 tests/
 ├── test_constants.py
 ├── test_cw.py
@@ -413,7 +472,8 @@ tests/
 ├── test_optimize.py
 ├── test_frames.py
 ├── test_forces.py
-└── test_propagator.py
+├── test_propagator.py
+└── test_long_term.py
 docs/images/                # figures used in this README
 ```
 

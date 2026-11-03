@@ -41,8 +41,13 @@ def integrate(state0: np.ndarray, t_start: float, t_eval: np.ndarray,
     return sol.y.T
 
 
-def propagate_mission_numerical(mission: Mission, t: np.ndarray,
-                                model: ForceModel = ForceModel()) -> tuple[list[str], np.ndarray]:
+def propagate_mission_eci(mission: Mission, t: np.ndarray,
+                          model: ForceModel = ForceModel()) -> tuple[list[str], np.ndarray, np.ndarray]:
+    """
+    Som propagate_mission_numerical, men returnerar tillstånden i ECI utan omvandling:
+    (namn, tillstånd i ECI med form (antal_objekt, N, 6), referenspunktens tillstånd (N, 6)).
+    Snabbare när bara avstånd behövs, eftersom avstånd är desamma i alla koordinatsystem.
+    """
     """
     Propagerar raketsteget och alla satelliter numeriskt.
 
@@ -101,6 +106,21 @@ def propagate_mission_numerical(mission: Mission, t: np.ndarray,
 
     eci = np.stack([stage_states] + [states for _, states, _ in sat_states])
     names = ["Stage"] + [name for name, _, _ in sat_states]
+    return names, eci, reference
+
+
+def propagate_mission_numerical(mission: Mission, t: np.ndarray,
+                                model: ForceModel = ForceModel()) -> tuple[list[str], np.ndarray]:
+    """
+    Propagerar raketsteget och alla satelliter numeriskt.
+
+    Returnerar (namn, tillstånd i LVLH) med formen (1 + antal_satelliter, N, 6),
+    samma format som propagate_mission, så att analyskoden kan återanvändas.
+    LVLH-ramen följer en referenspunkt som propageras med samma gravitationsmodell
+    men utan luftmotstånd.
+    """
+    t = np.asarray(t, dtype=float)
+    names, eci, reference = propagate_mission_eci(mission, t, model)
 
     # Översätt till LVLH relativt referenspunkten
     lvlh = np.zeros_like(eci)

@@ -1,0 +1,28 @@
+name = "Scenario 3: mixed rideshare (large panels, CubeSat, compact)"
+altitude_km = 500
+stage_mass_kg = 1200
+stage_area_m2 = 10.0
+
+[[satellites]]
+name = "PanelSat"
+mass_kg = 100
+spring_impulse_Ns = 100       # 1,0 m/s
+area_m2 = 4.0                 # stora solpaneler → mycket luftmotstånd
+direction = [1, 0, 0]
+t_sep_s = 0
+
+[[satellites]]
+name = "CubeSat"
+mass_kg = 12
+spring_impulse_Ns = 12        # 1,0 m/s
+area_m2 = 0.06                # 6U CubeSat, kompakt
+direction = [-1, 0, 0]
+t_sep_s = 60
+
+[[satellites]]
+name = "Compact"
+mass_kg = 200
+spring_impulse_Ns = 200       # 1,0 m/s
+area_m2 = 1.5
+direction = [1, 0, 1]
+t_sep_s = 120

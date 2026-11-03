@@ -80,3 +80,26 @@ def optimize_plan(
         polish=False,
     )
     return apply_plan(mission, result.x), -result.fun
+
+def optimize_candidates(
+    mission: Mission,
+    n_candidates: int = 20,
+    min_gap: float = 30.0,
+    max_gap: float = 300.0,
+    clearance: float = 600.0,
+    maxiter: int = 150,
+    popsize: int = 15,
+    seed: int = 0,
+) -> list[tuple[Mission, float]]:
+    """Kör CW-optimeraren och returnerar de n_candidates bästa planerna, bäst först."""
+    n_sats = len(mission.satellites)
+    bounds = [(-180.0, 180.0), (-90.0, 90.0)] * n_sats + [(min_gap, max_gap)] * (n_sats - 1)
+
+    def objective(params: np.ndarray) -> float:
+        return -min_separation(apply_plan(mission, params), clearance=clearance)
+
+    result = differential_evolution(
+        objective, bounds, maxiter=maxiter, popsize=popsize, seed=seed, tol=1e-6, polish=False
+    )
+    order = np.argsort(result.population_energies)[:n_candidates]
+    return [(apply_plan(mission, result.population[i]), -result.population_energies[i]) for i in order]

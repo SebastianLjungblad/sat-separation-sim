@@ -69,3 +69,19 @@ def plot_model_comparison(t, errors, safety=10.0):
     ax.legend(loc="lower right")
     fig.tight_layout()
     return fig
+
+
+def plot_min_distance_over_time(t, curves, safety=10.0, title="Closest distance between any pair"):
+    """Kortaste avståndet mellan något par över tid, en kurva per plan. curves: {etikett: (N,)}."""
+    fig, ax = plt.subplots(figsize=(10, 5))
+    for label, d in curves.items():
+        ax.plot(t / 86400, np.where(np.isfinite(d), d, np.nan), label=label)
+    ax.axhline(safety, color="red", linestyle="--", label=f"Safety distance ({safety:g} m)")
+    ax.set_yscale("log")
+    ax.set_xlabel("Time since mission start [days]")
+    ax.set_ylabel("Closest distance between any pair [m]")
+    ax.set_title(title)
+    ax.grid(True, which="both", alpha=0.3)
+    ax.legend(loc="lower right")
+    fig.tight_layout()
+    return fig
