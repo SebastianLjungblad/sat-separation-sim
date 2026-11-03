@@ -7,6 +7,13 @@ satellites and the upper stage in the hours and days after deployment.
 **Goal:** find separation sequences (timing and direction for each satellite)
 that avoid re-contact and keep all objects above a minimum safety distance.
 
+**[▶ Live 3D demo](https://sebastianljungblad.github.io/sat-separation-sim/)** – a robust
+separation plan for three satellites, propagated for 21 days with J2 and drag. Rotate
+the Earth, zoom from 26 000 km down to the satellites at true scale, and replay the
+close passes.
+
+![3D viewer: the orbit over a rotating Earth](docs/images/viewer_earth.png)
+
 ## Motivation
 
 Multi-satellite dispensers release payloads in a predefined sequence. Orbital
@@ -43,6 +50,42 @@ highest.
 
 ```bash
 uv run streamlit run app/streamlit_app.py
+```
+
+## 3D viewer (v0.6)
+
+![Relative trails in the LVLH frame during the closest pass](docs/images/viewer_relative.png)
+
+Every plan can be explored on a 3D globe, either in a tab in the app or as a
+standalone HTML page. The trajectories come from the numerical model (J2 + drag,
+21 days); the page interpolates between 60 s samples with cubic Hermite
+interpolation, which keeps the error in the distance *between* two objects
+**below 1 cm** (tested against direct propagation every 10 s).
+
+- **Zoom over seven orders of magnitude** – from 26 000 km to under a metre,
+  with a scale bar. The upper stage and the satellites are drawn at true size.
+- **No jitter at close range** – graphics cards compute in 32-bit floats, which
+  at 6 900 km from the Earth's centre resolve only about ±0.5 m. The viewer keeps
+  all positions in 64-bit precision relative to the object the camera follows
+  (a floating origin) and only sends the small differences to the GPU.
+- **Two camera frames** – inertial (ECI, fixed to the stars) and LVLH, which
+  rotates with the followed object so that radial is always up.
+- **Two kinds of trails** – paths through space, or paths *relative* to the
+  followed object in its LVLH frame: the Clohessy–Wiltshire loops, now from the
+  full numerical model.
+- **Real sky and lighting** – 5 044 stars at their catalogue positions (ECI is
+  fixed to the stars), the Earth rotating with Greenwich sidereal time, the Sun at
+  its position for the chosen date, day/night terminator, and Earth's shadow.
+- **Sun-synchronous geometry** – the orbit plane is set so that the ascending node
+  passes at 10:30 local solar time. All forces in the model are symmetric about
+  the Earth's axis, so the plane can be rotated after propagation with exactly the
+  same result as starting there.
+- **Time controls** – play from real time to 10 h per second, scrub over three
+  weeks, and jump straight to the separations or the closest passes. A panel shows
+  the distance and range rate to every other object.
+
+```bash
+uv run python examples/export_3d.py scenarios/scenario3_mixed_robust.toml   # → results/…_3d.html
 ```
 
 ## Headline result: optimized separation plan (v0.3)
@@ -271,10 +314,17 @@ and a close-up view following the dispenser).
 - [x] Plan export as TOML scenario, plots for the first orbits and the numerical check
 - [x] End-to-end app test (Streamlit AppTest)
 
+**v0.6 — done**
+- [x] Trajectory export: 21 days of numerical states, Earth orientation (GMST), Sun direction
+- [x] Orbit plane set from local time of the ascending node (sun-synchronous, 10:30)
+- [x] Three.js viewer: textured Earth with day/night and city lights, real stars, Earth's shadow
+- [x] Floating origin and Hermite interpolation: zoom from 26 000 km to 1 m without jitter
+- [x] Inertial and LVLH camera frames, inertial and relative trails, time controls, event list
+- [x] 3D tab in the app and standalone HTML export (live demo on GitHub Pages)
+- [x] Fix: saved scenarios now include areas, drag coefficients and inclination
+
 **Planned**
-- [ ] v0.6 — 3D visualization in the app: rotating Earth with ECI axes, launch and
-  separation animation, orbits over three weeks with time controls, LVLH close-up
-  of close passes
+- [ ] v0.6.1 — Launch animation: lift-off, orbit insertion and the separation sequence
 - [ ] v0.7 — Monte Carlo collision probability (spring and attitude uncertainty)
 
 **Future work**
@@ -415,6 +465,11 @@ object's area-to-mass ratio.
 | Numerical vs. CW | Agree within 5 cm for small separations; CW error grows with the square of the separation |
 | Differential drag | A light object with large area ends up *ahead* of a compact stage after one day |
 | Long-term analysis | Agrees with the CW objective over short times without perturbations |
+| Greenwich sidereal time | 280.46061837° at J2000 (2000-01-01 12:00 UT1) |
+| Sun direction | Along the ECI x-axis at the March equinox 2027 (within 0.05°) |
+| Rotation about the Earth's axis | Rotating the start state then propagating = propagating then rotating (< 1 mm after 1 day, J2 + drag) |
+| Hermite interpolation of 60 s samples | Absolute error < 1 m, error in distance between objects < 1 cm |
+| 3D viewer page | Data embedded and round-trips; object names cannot break out of the script tag |
 | Robust ranking | Worst case is the smallest of the CW score and all solar levels; candidates sorted by it |
 
 ## Getting started
@@ -425,6 +480,7 @@ Requires [uv](https://docs.astral.sh/uv/).
 uv sync
 uv run pytest                                                 # run all tests (~1 min)
 uv run streamlit run app/streamlit_app.py                     # the planner app
+uv run python examples/export_3d.py scenarios/scenario3_mixed_robust.toml   # standalone 3D page
 ```
 
 The examples run the same analyses from the command line:
@@ -479,6 +535,7 @@ src/sepsim/
 ├── constants.py            # physical constants with sources
 ├── scenario.py             # Satellite and Mission data classes, TOML loading and saving
 ├── catalog.py              # satellite types and app inputs → Mission
+├── export.py               # trajectories, Earth rotation and Sun for the 3D viewer
 ├── optimize.py             # plan parameters, objective, optimizer
 ├── dynamics/
 │   ├── cw.py               # Clohessy–Wiltshire propagation, separation times
@@ -492,7 +549,9 @@ src/sepsim/
 │   └── long_term.py        # multi-day numerical analysis, robust ranking
 └── viz/
     ├── plots.py            # distance and trajectory plots
-    └── space_theme.py      # starry background and dark plot style for the app
+    ├── space_theme.py      # starry background and dark plot style for the app
+    ├── viewer.py           # builds the standalone 3D page from exported data
+    └── viewer.html         # the 3D viewer (Three.js)
 scenarios/
 ├── scenario1.toml              # radial separations
 ├── scenario2.toml              # separations with along-track component
@@ -504,7 +563,8 @@ examples/
 ├── run_scenario.py         # analyse any scenario: simulation, analysis, plots
 ├── optimize_scenario.py    # optimize a plan and save it as a scenario
 ├── compare_models.py       # CW vs numerical model, perturbation by perturbation
-└── optimize_robust.py      # two-stage optimization: CW candidates + numerical worst case
+├── optimize_robust.py      # two-stage optimization: CW candidates + numerical worst case
+└── export_3d.py            # standalone 3D page for a scenario
 tests/
 ├── test_constants.py
 ├── test_cw.py
@@ -519,8 +579,12 @@ tests/
 ├── test_propagator.py
 ├── test_long_term.py
 ├── test_catalog.py
+├── test_export.py
+├── test_viewer.py
 └── test_app.py             # runs the app end to end with Streamlit AppTest
-docs/images/                # figures used in this README
+docs/
+├── index.html              # live 3D demo served by GitHub Pages
+└── images/                 # figures used in this README
 ```
 
 ## References
