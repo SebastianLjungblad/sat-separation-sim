@@ -1,11 +1,16 @@
 name = "scenario3_mixed (CW favourite)"
 altitude_km = 500
 stage_mass_kg = 1200
+inclination_deg = 97.4
+stage_area_m2 = 10
+stage_drag_coefficient = 2.2
 
 [[satellites]]
 name = "PanelSat"
 mass_kg = 100
 spring_impulse_Ns = 100
+area_m2 = 4
+drag_coefficient = 2.2
 direction = [0.950703, 0.310102, 0.000015]     # azimuth 71.9°, elevation 0.0°
 t_sep_s = 0.0
 
@@ -13,6 +18,8 @@ t_sep_s = 0.0
 name = "CubeSat"
 mass_kg = 12
 spring_impulse_Ns = 12
+area_m2 = 0.06
+drag_coefficient = 2.2
 direction = [-0.878794, -0.477119, 0.008858]     # azimuth -118.5°, elevation 0.5°
 t_sep_s = 295.5
 
@@ -20,5 +27,7 @@ t_sep_s = 295.5
 name = "Compact"
 mass_kg = 200
 spring_impulse_Ns = 200
+area_m2 = 1.5
+drag_coefficient = 2.2
 direction = [-0.599031, -0.800085, 0.032023]     # azimuth -143.2°, elevation 1.8°
 t_sep_s = 570.9

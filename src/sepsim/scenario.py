@@ -77,3 +77,8 @@ def mission_to_toml(mission: Mission, name: str) -> str:
             f"t_sep_s = {sat.t_sep:.1f}",
         ]
     return "\n".join(lines) + "\n"
+
+
+def save_mission(mission: Mission, path: str | Path, name: str) -> None:
+    """Sparar uppdraget som en TOML-fil i samma format som load_mission läser."""
+    Path(path).write_text(mission_to_toml(mission, name))

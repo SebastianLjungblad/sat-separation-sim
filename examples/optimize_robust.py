@@ -16,11 +16,8 @@ from pathlib import Path
 from sepsim.analysis.long_term import SOLAR_LEVELS, min_distance_over_time, rank_robust
 from sepsim.dynamics.forces import ForceModel
 from sepsim.optimize import optimize_candidates
-from sepsim.scenario import load_mission
+from sepsim.scenario import load_mission, save_mission
 from sepsim.viz.plots import plot_min_distance_over_time
-
-sys.path.insert(0, str(Path(__file__).parent))
-from optimize_scenario import save_mission  # noqa: E402
 
 N_CANDIDATES = 20
 DAYS = 7.0
