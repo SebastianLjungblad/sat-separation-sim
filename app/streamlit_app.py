@@ -21,10 +21,12 @@ from sepsim.analysis.mission import analyze_mission
 from sepsim.catalog import SATELLITE_TYPES, SatelliteInput, mission_from_inputs
 from sepsim.dynamics.forces import ForceModel
 from sepsim.dynamics.separation import angles_from_direction
+from sepsim.export import export_trajectories
 from sepsim.optimize import optimize_candidates
 from sepsim.scenario import Mission, mission_to_toml
 from sepsim.viz.plots import plot_distances, plot_min_distance_over_time, plot_trajectories
 from sepsim.viz.space_theme import apply_space_theme
+from sepsim.viz.viewer import viewer_html
 
 DEFAULT_TYPES = ["Microsat with solar panels", "6U CubeSat", "Compact smallsat", "12U CubeSat", "3U CubeSat"]
 
@@ -225,6 +227,33 @@ def long_term_curves(plan: Mission, days: float, clearance: float):
     return t, curves
 
 
+VIEWER_DAYS = 21
+
+
+@st.cache_data(show_spinner=f"Propagating {VIEWER_DAYS} days for the 3D view (about a minute)…")
+def viewer_page(plan: Mission, clearance: float) -> str:
+    return viewer_html(export_trajectories(plan, days=VIEWER_DAYS, clearance=clearance))
+
+
+def show_3d(plan: Mission, rank: int, clearance: float) -> None:
+    """3D-visaren: jordglob, banor och objekten i verklig skala."""
+    if not st.session_state.get(f"show_3d_{rank}"):
+        st.caption(f"Propagates the plan for {VIEWER_DAYS} days with J2 and drag (medium solar activity) and "
+                   "shows it on a 3D globe with real stars, sunlight and the objects at true scale.")
+        if st.button("Build 3D view", key=f"build_3d_{rank}"):
+            st.session_state[f"show_3d_{rank}"] = True
+            st.rerun()
+        return
+    page = viewer_page(plan, clearance)
+    if hasattr(st, "iframe"):                       # Streamlit ≥ 1.5x
+        st.iframe(page, height=780)
+    else:
+        import streamlit.components.v1 as components
+        components.html(page, height=780)
+    st.download_button("Download 3D view as HTML", page, file_name=f"sepsim_plan_{rank}_3d.html", mime="text/html",
+                       help="A standalone page that opens in any browser – can be hosted on GitHub Pages.")
+
+
 def show_plan(row: RobustRow, rank: int, cw_favourite: RobustRow, settings: Settings, safety: float) -> None:
     """Detaljvyn för en vald plan: separationerna, nyckeltal och grafer."""
     st.subheader(f"Plan #{rank}")
@@ -258,7 +287,9 @@ def show_plan(row: RobustRow, rank: int, cw_favourite: RobustRow, settings: Sett
     st.download_button("Download plan as TOML", mission_to_toml(plan, f"Plan #{rank}"),
                        file_name=f"plan_{rank}.toml", mime="text/plain")
 
-    tab_cw, tab_long = st.tabs(["First orbits (CW)", f"{settings.days} days (J2 + drag)"])
+    tab_3d, tab_cw, tab_long = st.tabs(["3D view", "First orbits (CW)", f"{settings.days} days (J2 + drag)"])
+    with tab_3d:
+        show_3d(plan, rank, settings.clearance)
     with tab_cw:
         analysis = first_orbits(plan, settings.clearance)
         col1, col2 = st.columns(2)

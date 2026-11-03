@@ -1,0 +1,880 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sepsim 3D viewer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<style>
+  :root {
+    --bg: #02030a;
+    --glass: rgba(10, 14, 32, 0.72);
+    --line: rgba(150, 170, 255, 0.16);
+    --text: #e6e9ff;
+    --muted: #8f97bd;
+    --accent: #8b7bff;
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+               font-family: 'Space Grotesk', system-ui, sans-serif; }
+  canvas { display: block; width: 100%; height: 100%; }
+  .panel { position: absolute; background: var(--glass); border: 1px solid var(--line); border-radius: 12px;
+           backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  h4 { margin: 0 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase;
+       color: var(--muted); }
+
+  /* Överst till vänster: tid */
+  #clock { top: 12px; left: 12px; padding: 10px 14px; }
+  #clock .utc { font-size: 15px; }
+  #clock .met { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  #status { font-size: 12px; margin-top: 6px; color: #ffd27a; min-height: 1em; }
+
+  /* Höger: kontroller */
+  #side { top: 12px; right: 12px; width: 250px; padding: 12px; max-height: calc(100% - 210px); overflow-y: auto; }
+  #side section + section { margin-top: 14px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  button, select { font: inherit; font-size: 12px; color: var(--text); background: rgba(255,255,255,0.05);
+                   border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px; cursor: pointer; }
+  button:hover { border-color: rgba(170, 160, 255, 0.5); }
+  button.on { background: rgba(139, 123, 255, 0.28); border-color: var(--accent); }
+  select { width: 100%; }
+  .chip-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  label.check { display: flex; align-items: center; gap: 8px; font-size: 12px; margin: 4px 0; cursor: pointer; }
+  .event { display: block; width: 100%; text-align: left; margin-bottom: 4px; }
+  .event small { color: var(--muted); }
+
+  /* Nederst till vänster: fokusobjektet och avstånd */
+  #info { left: 12px; bottom: 96px; padding: 10px 14px; font-size: 12px; min-width: 260px; }
+  #info table { border-collapse: collapse; width: 100%; margin-top: 6px; }
+  #info td { padding: 2px 0; }
+  #info td + td { text-align: right; padding-left: 14px; }
+  #info .k { color: var(--muted); }
+
+  /* Skalstock */
+  #scale { right: 12px; bottom: 96px; padding: 8px 12px; font-size: 12px; text-align: right; }
+  #scalebar { height: 6px; border: 2px solid var(--text); border-top: none; margin: 4px 0 2px auto; }
+
+  /* Nederst: tidslinje */
+  #timeline { left: 12px; right: 12px; bottom: 12px; padding: 10px 14px; display: flex; align-items: center; gap: 12px; }
+  #play { width: 40px; font-size: 15px; }
+  #slider { flex: 1; accent-color: var(--accent); }
+  #speeds { display: flex; gap: 4px; }
+
+  /* Etiketter på objekten */
+  #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .lab { position: absolute; left: 0; top: 0; white-space: nowrap; font-size: 12px; pointer-events: auto; cursor: pointer;
+         text-shadow: 0 0 4px #000, 0 0 8px #000; }
+  .lab .ring { position: absolute; left: -7px; top: -7px; width: 14px; height: 14px; border-radius: 50%;
+               border: 1.5px solid currentColor; }
+  .lab .txt { position: absolute; left: 12px; top: -8px; }
+  .lab .txt small { color: var(--muted); margin-left: 6px; font-family: var(--mono); }
+  .axis-lab { position: absolute; left: 0; top: 0; font-size: 11px; white-space: nowrap; text-shadow: 0 0 4px #000; }
+
+  #loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 14px;
+             pointer-events: none; transition: opacity 0.8s; }
+  #help { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); padding: 6px 12px; font-size: 12px;
+          color: var(--muted); }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="labels"></div>
+<div id="loading">Loading Earth and stars…</div>
+
+<div id="clock" class="panel">
+  <div class="utc mono" id="utc">–</div>
+  <div class="met mono" id="met">–</div>
+  <div id="status"></div>
+</div>
+<div id="help" class="panel">Drag to rotate · scroll to zoom · click a name to fly to it</div>
+
+<div id="side" class="panel">
+  <section><h4>Focus</h4><div class="chips" id="focus"></div></section>
+  <section><h4>Camera frame</h4>
+    <div class="chips">
+      <button id="view-eci" class="on" title="Camera fixed relative to the stars">Inertial (ECI)</button>
+      <button id="view-lvlh" title="Camera rotates with the focus object: radial up, along-track right">LVLH</button>
+    </div>
+  </section>
+  <section><h4>Trails</h4>
+    <div class="chips" style="margin-bottom:6px">
+      <button id="trail-inertial" class="on" title="Paths through space (ECI)">Inertial</button>
+      <button id="trail-relative" title="Paths relative to the focus object, in its LVLH frame (CW loops)">Relative</button>
+    </div>
+    <select id="trail-length">
+      <option value="600">10 minutes</option>
+      <option value="orbit" selected>1 orbit</option>
+      <option value="21600">6 hours</option>
+      <option value="86400">1 day</option>
+    </select>
+  </section>
+  <section><h4>Show</h4>
+    <label class="check"><input type="checkbox" id="show-eci" checked> ECI axes</label>
+    <label class="check"><input type="checkbox" id="show-lvlh" checked> LVLH axes at focus</label>
+    <label class="check"><input type="checkbox" id="show-labels" checked> Labels</label>
+    <label class="check"><input type="checkbox" id="show-clouds" checked> Clouds</label>
+  </section>
+  <section><h4>Events</h4><div id="events"></div></section>
+</div>
+
+<div id="info" class="panel"></div>
+<div id="scale" class="panel"><div id="scalebar"></div><span class="mono" id="scaletext"></span>
+  <div class="mono" id="camdist" style="color:var(--muted)"></div></div>
+
+<div id="timeline" class="panel">
+  <button id="play">❚❚</button>
+  <div id="speeds"></div>
+  <input type="range" id="slider" min="0" max="1" step="1" value="0">
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ---------------------------------------------------------------------------
+// Data från Python (sepsim.export). Ersätts när HTML-filen byggs.
+// ---------------------------------------------------------------------------
+const DATA = /*__SEPSIM_DATA__*/null;
+
+const CDN = {
+  day: 'https://cdn.jsdelivr.net/npm/three-globe@2.31.0/example/img/earth-blue-marble.jpg',
+  night: 'https://cdn.jsdelivr.net/npm/three-globe@2.31.0/example/img/earth-night.jpg',
+  water: 'https://cdn.jsdelivr.net/npm/three-globe@2.31.0/example/img/earth-water.png',
+  clouds: 'https://cdn.jsdelivr.net/npm/three-globe@2.31.0/example/clouds/clouds.png',
+  stars: 'https://cdn.jsdelivr.net/npm/d3-celestial@0.7.35/data/stars.6.json',
+};
+const COLORS = ['#c8cfe6', '#7aa2ff', '#ff8fb3', '#7fe0c8', '#ffd27a', '#c59bff', '#ff9f6e'];
+const AU = 1.495978707e11;
+const STAR_RADIUS = 1e13;     // stjärnorna ligger "oändligt" långt bort
+
+function decode(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Float64Array(bytes.buffer);
+}
+
+const R_E = DATA.earth.radius_m, OMEGA = DATA.earth.omega_rad_s, GMST0 = DATA.earth.gmst_at_epoch_rad;
+const EPOCH_MS = Date.parse(DATA.epoch_utc);
+const T = decode(DATA.t_s);
+const T_END = T[T.length - 1];
+const SUN_T = decode(DATA.sun.t_s), SUN_D = decode(DATA.sun.direction);
+const OBJECTS = DATA.objects.map((o, i) => ({
+  name: o.name, mass: o.mass_kg, area: o.area_m2, release: o.release_s, S: decode(o.state), color: COLORS[i % COLORS.length],
+}));
+const PERIOD = 2 * Math.PI * Math.sqrt((R_E + DATA.orbit.altitude_m) ** 3 / 3.986004418e14);
+
+// ---------------------------------------------------------------------------
+// Interpolation (samma formel som sepsim.export.hermite), i 64-bitars precision
+// ---------------------------------------------------------------------------
+function segment(t) {
+  const n = T.length;
+  if (t <= T[0]) return 0;
+  if (t >= T[n - 1]) return n - 2;
+  let lo = 0, hi = n - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (T[m] <= t) lo = m; else hi = m; }
+  return lo;
+}
+
+function stateAt(obj, t, out = new Float64Array(6)) {
+  t = Math.min(Math.max(t, 0), T_END);
+  const k = segment(t), h = T[k + 1] - T[k], s = (t - T[k]) / h, s2 = s * s, s3 = s2 * s;
+  const h00 = 2 * s3 - 3 * s2 + 1, h10 = s3 - 2 * s2 + s, h01 = -2 * s3 + 3 * s2, h11 = s3 - s2;
+  const d00 = (6 * s2 - 6 * s) / h, d10 = 3 * s2 - 4 * s + 1, d01 = (-6 * s2 + 6 * s) / h, d11 = 3 * s2 - 2 * s;
+  const S = obj.S, a = 6 * k, b = 6 * k + 6;
+  for (let i = 0; i < 3; i++) {
+    const p0 = S[a + i], v0 = S[a + 3 + i], p1 = S[b + i], v1 = S[b + 3 + i];
+    out[i] = h00 * p0 + h10 * h * v0 + h01 * p1 + h11 * h * v1;
+    out[3 + i] = d00 * p0 + d10 * v0 + d01 * p1 + d11 * v1;
+  }
+  return out;
+}
+
+function sunAt(t) {
+  const x = Math.min(Math.max(t / 3600, 0), SUN_T.length - 1.0001), k = Math.floor(x), f = x - k;
+  const v = [0, 1, 2].map(i => SUN_D[3 * k + i] * (1 - f) + SUN_D[3 * k + 3 + i] * f);
+  const n = Math.hypot(...v);
+  return v.map(c => c / n);
+}
+
+// Vektorhjälp (vanliga arrayer, 64 bitar)
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const norm = a => Math.hypot(a[0], a[1], a[2]);
+const unit = a => { const n = norm(a); return [a[0] / n, a[1] / n, a[2] / n]; };
+
+// LVLH: x radiellt utåt, y längs banan, z vinkelrätt mot banplanet (samma som i Python)
+function lvlh(st) {
+  const r = [st[0], st[1], st[2]], v = [st[3], st[4], st[5]];
+  const x = unit(r), z = unit(cross(r, v)), y = cross(z, x);
+  return [x, y, z];
+}
+
+// ---------------------------------------------------------------------------
+// Renderare, kamera och scen
+// ---------------------------------------------------------------------------
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, logarithmicDepthBuffer: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, 1, 0.05, 1e14);
+camera.position.set(0, 0.35, 1).multiplyScalar(2.6e7);
+const controls = new OrbitControls(camera, canvas);
+controls.enablePan = false;
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 0.5;
+controls.maxDistance = 2e8;
+controls.zoomSpeed = 1.4;
+
+// root: allt inuti ligger i ECI-koordinater (z mot nordpolen). Matrisen avgör hur ECI visas.
+const root = new THREE.Group();
+root.matrixAutoUpdate = false;
+scene.add(root);
+const ECI_TO_THREE = new THREE.Matrix4().set(1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1);
+root.matrix.copy(ECI_TO_THREE);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.22));
+const sunLight = new THREE.DirectionalLight(0xfff4e6, 3.0);
+scene.add(sunLight, sunLight.target);
+
+// --- Stjärnor: riktiga positioner (rektascension, deklination) = riktningar i ECI ---
+function bvToColor(bv) {
+  const stops = [[-0.4, [0.62, 0.71, 1.0]], [0.0, [0.8, 0.86, 1.0]], [0.4, [1.0, 0.98, 0.95]],
+                 [0.8, [1.0, 0.9, 0.75]], [1.2, [1.0, 0.8, 0.58]], [2.0, [1.0, 0.65, 0.42]]];
+  if (!(bv > -1)) bv = 0.6;
+  for (let i = 1; i < stops.length; i++) {
+    if (bv <= stops[i][0]) {
+      const [b0, c0] = stops[i - 1], [b1, c1] = stops[i], f = Math.max(0, (bv - b0) / (b1 - b0));
+      return c0.map((c, k) => c + (c1[k] - c) * f);
+    }
+  }
+  return stops[stops.length - 1][1];
+}
+
+async function loadStars() {
+  const res = await fetch(CDN.stars);
+  const json = await res.json();
+  const n = json.features.length;
+  const pos = new Float32Array(3 * n), col = new Float32Array(3 * n), size = new Float32Array(n);
+  json.features.forEach((f, i) => {
+    const [ra, dec] = f.geometry.coordinates.map(d => d * Math.PI / 180);
+    pos[3 * i] = STAR_RADIUS * Math.cos(dec) * Math.cos(ra);
+    pos[3 * i + 1] = STAR_RADIUS * Math.cos(dec) * Math.sin(ra);
+    pos[3 * i + 2] = STAR_RADIUS * Math.sin(dec);
+    const mag = f.properties.mag;
+    const brightness = Math.min(1.6, Math.max(0.18, 0.3 + (6 - mag) * 0.2));
+    bvToColor(parseFloat(f.properties.bv)).forEach((c, k) => { col[3 * i + k] = c * brightness; });
+    size[i] = Math.min(7, Math.max(1.4, 1.6 + (6 - mag) * 0.75)) * renderer.getPixelRatio();
+  });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.setAttribute('size', new THREE.BufferAttribute(size, 1));
+  const mat = new THREE.ShaderMaterial({
+    vertexShader: `
+      attribute float size; attribute vec3 color; varying vec3 vColor;
+      #include <common>
+      #include <logdepthbuf_pars_vertex>
+      void main() {
+        vColor = color;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = size;
+        #include <logdepthbuf_vertex>
+      }`,
+    fragmentShader: `
+      varying vec3 vColor;
+      #include <logdepthbuf_pars_fragment>
+      void main() {
+        #include <logdepthbuf_fragment>
+        float d = length(gl_PointCoord - 0.5);
+        float a = smoothstep(0.5, 0.0, d);
+        gl_FragColor = vec4(vColor * a * a, 1.0);
+      }`,
+    blending: THREE.AdditiveBlending, depthWrite: false, transparent: true,
+  });
+  const stars = new THREE.Points(geo, mat);
+  stars.frustumCulled = false;
+  stars.renderOrder = -2;
+  root.add(stars);
+}
+
+// --- Jorden: dag/natt efter solens riktning, stadsljus på nattsidan, solglitter på haven ---
+const earthGroup = new THREE.Group();       // jordens centrum (flyttas så att fokus ligger i origo)
+const earthSpin = new THREE.Group();        // jordens rotation: GMST
+earthGroup.add(earthSpin);
+root.add(earthGroup);
+
+const earthUniforms = {
+  dayMap: { value: null }, nightMap: { value: null }, waterMap: { value: null },
+  hasTextures: { value: 0 }, sunDir: { value: new THREE.Vector3(1, 0, 0) },
+};
+const earthMaterial = new THREE.ShaderMaterial({
+  uniforms: earthUniforms,
+  vertexShader: `
+    varying vec2 vUv; varying vec3 vNormalW; varying vec3 vPosW;
+    #include <common>
+    #include <logdepthbuf_pars_vertex>
+    void main() {
+      vUv = uv;
+      vNormalW = normalize(mat3(modelMatrix) * normal);
+      vec4 wp = modelMatrix * vec4(position, 1.0);
+      vPosW = wp.xyz;
+      gl_Position = projectionMatrix * viewMatrix * wp;
+      #include <logdepthbuf_vertex>
+    }`,
+  fragmentShader: `
+    uniform sampler2D dayMap, nightMap, waterMap; uniform float hasTextures; uniform vec3 sunDir;
+    varying vec2 vUv; varying vec3 vNormalW; varying vec3 vPosW;
+    #include <common>
+    #include <logdepthbuf_pars_fragment>
+    void main() {
+      #include <logdepthbuf_fragment>
+      vec3 n = normalize(vNormalW);
+      vec3 viewDir = normalize(cameraPosition - vPosW);
+      float d = dot(n, sunDir);
+      float dayMix = smoothstep(-0.10, 0.12, d);
+      vec3 day = hasTextures > 0.5 ? texture2D(dayMap, vUv).rgb : vec3(0.12, 0.25, 0.55);
+      vec3 night = hasTextures > 0.5 ? texture2D(nightMap, vUv).rgb : vec3(0.0);
+      float water = hasTextures > 0.5 ? texture2D(waterMap, vUv).r : 0.0;
+      vec3 lit = day * (0.06 + 1.05 * max(d, 0.0));
+      vec3 color = mix(night * vec3(1.0, 0.85, 0.6) * 1.4, lit, dayMix);
+      vec3 h = normalize(sunDir + viewDir);
+      color += vec3(1.0, 0.92, 0.8) * pow(max(dot(n, h), 0.0), 60.0) * water * 0.8 * step(0.0, d);
+      float rim = 1.0 - max(dot(n, viewDir), 0.0);
+      color += vec3(0.30, 0.55, 1.0) * pow(rim, 4.0) * 0.9 * smoothstep(-0.25, 0.35, d);
+      gl_FragColor = vec4(color, 1.0);
+      #include <colorspace_fragment>
+    }`,
+});
+const earth = new THREE.Mesh(new THREE.SphereGeometry(R_E, 192, 96), earthMaterial);
+earth.rotation.x = Math.PI / 2;            // sfärens pol (y) → ECI:s z
+earthSpin.add(earth);
+
+const cloudMaterial = new THREE.MeshLambertMaterial({ transparent: true, opacity: 0.85, depthWrite: false });
+const clouds = new THREE.Mesh(new THREE.SphereGeometry(R_E + 9e3, 128, 64), cloudMaterial);
+clouds.rotation.x = Math.PI / 2;
+clouds.visible = false;
+earthSpin.add(clouds);
+
+// Atmosfären: en tunn glödande kant runt jorden
+const atmosphere = new THREE.Mesh(
+  new THREE.SphereGeometry(R_E + 80e3, 128, 64),
+  new THREE.ShaderMaterial({
+    uniforms: { sunDir: earthUniforms.sunDir },
+    vertexShader: `
+      varying vec3 vNormalW; varying vec3 vPosW;
+      #include <common>
+      #include <logdepthbuf_pars_vertex>
+      void main() {
+        vNormalW = normalize(mat3(modelMatrix) * normal);
+        vec4 wp = modelMatrix * vec4(position, 1.0); vPosW = wp.xyz;
+        gl_Position = projectionMatrix * viewMatrix * wp;
+        #include <logdepthbuf_vertex>
+      }`,
+    fragmentShader: `
+      uniform vec3 sunDir; varying vec3 vNormalW; varying vec3 vPosW;
+      #include <logdepthbuf_pars_fragment>
+      void main() {
+        #include <logdepthbuf_fragment>
+        vec3 n = normalize(vNormalW), v = normalize(cameraPosition - vPosW);
+        float rim = pow(clamp(1.0 - abs(dot(n, v)), 0.0, 1.0), 5.0);
+        float lit = smoothstep(-0.35, 0.4, dot(n, sunDir));
+        gl_FragColor = vec4(vec3(0.35, 0.62, 1.0) * rim * (0.08 + 1.3 * lit), 1.0);
+      }`,
+    blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, side: THREE.FrontSide,
+  }));
+earthGroup.add(atmosphere);
+
+async function loadEarth() {
+  const loader = new THREE.TextureLoader().setCrossOrigin('anonymous');
+  const load = url => new Promise((ok, fail) => loader.load(url, ok, undefined, fail));
+  const [day, night, water] = await Promise.all([load(CDN.day), load(CDN.night), load(CDN.water)]);
+  for (const tex of [day, night]) tex.colorSpace = THREE.SRGBColorSpace;
+  for (const tex of [day, night, water]) tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  earthUniforms.dayMap.value = day;
+  earthUniforms.nightMap.value = night;
+  earthUniforms.waterMap.value = water;
+  earthUniforms.hasTextures.value = 1;
+  load(CDN.clouds).then(tex => {
+    tex.colorSpace = THREE.SRGBColorSpace;
+    cloudMaterial.map = tex;               // vita moln, genomskinligheten ligger i bildens alfakanal
+    cloudMaterial.needsUpdate = true;
+    clouds.visible = document.getElementById('show-clouds').checked;
+  }).catch(() => {});
+}
+
+// --- Solen ---
+function glowTexture(stops) {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d'), grad = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+  stops.forEach(([o, col]) => grad.addColorStop(o, col));
+  g.fillStyle = grad; g.fillRect(0, 0, 256, 256);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+const sun = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: glowTexture([[0, '#ffffff'], [0.12, '#fffbe8'], [0.2, 'rgba(255,240,200,0.5)'], [0.45, 'rgba(255,200,120,0.08)'], [1, 'rgba(0,0,0,0)']]),
+  blending: THREE.AdditiveBlending, depthWrite: false, transparent: true,
+}));
+sun.scale.setScalar(AU * 0.0093 * 9);      // solskivan 0,53° plus ett glorian runt
+root.add(sun);
+
+// --- Raketsteget och satelliterna i verklig storlek ---
+function buildStage() {
+  const g = new THREE.Group();
+  const metal = new THREE.MeshStandardMaterial({ color: 0xc9ced8, metalness: 0.7, roughness: 0.35 });
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 5, 40), metal);
+  const nozzle = new THREE.Mesh(new THREE.ConeGeometry(0.9, 1.6, 32, 1, true),
+    new THREE.MeshStandardMaterial({ color: 0x3a3a44, metalness: 0.5, roughness: 0.6, side: THREE.DoubleSide }));
+  nozzle.position.y = -3.1;
+  const adapter = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 1.2, 0.8, 40),
+    new THREE.MeshStandardMaterial({ color: 0x2b2f3a, metalness: 0.4, roughness: 0.5 }));
+  adapter.position.y = 2.9;
+  g.add(body, nozzle, adapter);          // cylinderns axel (lokal y) pekar längs banan
+  return g;
+}
+
+function buildSatellite(mass, area, color) {
+  const g = new THREE.Group();
+  const b = Math.cbrt(mass / 500);              // kroppens sida vid ~500 kg/m³
+  const foil = new THREE.MeshStandardMaterial({ color: 0xd4a537, metalness: 0.85, roughness: 0.3 });
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(b, b, b), foil));
+  const wing = area - b * b;                    // resten av arean blir solpaneler
+  if (wing > 0.5 * b * b) {
+    const len = wing / 2 / b;
+    const panelMat = new THREE.MeshStandardMaterial({ color: 0x1b2b6e, metalness: 0.35, roughness: 0.45, emissive: 0x050a20 });
+    for (const sign of [-1, 1]) {
+      const p = new THREE.Mesh(new THREE.BoxGeometry(b * 0.9, 0.02, len), panelMat);
+      p.position.z = sign * (b / 2 + 0.08 + len / 2);   // panelerna sticker ut vinkelrätt mot banplanet
+      g.add(p);
+    }
+  }
+  const accent = new THREE.Mesh(new THREE.BoxGeometry(b * 0.3, b * 0.05, b * 0.3),
+    new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.6 }));
+  accent.position.x = b / 2 + 0.01;
+  accent.rotation.z = Math.PI / 2;
+  g.add(accent);
+  return g;
+}
+
+OBJECTS.forEach((o, i) => {
+  o.mesh = i === 0 ? buildStage() : buildSatellite(o.mass, o.area, o.color);
+  root.add(o.mesh);
+});
+
+// --- Spår (banor) ---
+const TRAIL_POINTS_MAX = 6000;
+OBJECTS.forEach(o => {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRAIL_POINTS_MAX * 3), 3));
+  o.trail = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: o.color, transparent: true, opacity: 0.85 }));
+  o.trail.frustumCulled = false;
+  root.add(o.trail);
+  const ahead = new THREE.BufferGeometry();
+  ahead.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRAIL_POINTS_MAX * 3), 3));
+  o.ahead = new THREE.Line(ahead, new THREE.LineBasicMaterial({ color: o.color, transparent: true, opacity: 0.25 }));
+  o.ahead.frustumCulled = false;
+  root.add(o.ahead);
+});
+const AHEAD_OFFSETS = trailOffsets(PERIOD);     // banan ett varv framåt, svagare
+
+// Tidpunkter bakåt i tiden för spåren: tätt nära nu (för inzoomning), jämnt glest längre bort
+function trailOffsets(length) {
+  const geometric = Array.from({ length: 500 }, (_, j) => 0.02 * Math.pow(length / 0.02, j / 499));
+  const uniform = Array.from({ length: Math.min(5000, Math.ceil(length / 20)) }, (_, j) => (j + 1) * length / Math.ceil(length / 20));
+  return Float64Array.from([0, ...geometric, ...uniform].filter(x => x <= length)).sort();
+}
+
+// --- Axlar ---
+function arrow(dir, length, color) {
+  const a = new THREE.ArrowHelper(new THREE.Vector3(...dir), new THREE.Vector3(), length, color, length * 0.06, length * 0.03);
+  a.traverse(c => { if (c.material) { c.material.depthTest = true; c.frustumCulled = false; } });
+  return a;
+}
+const eciAxes = new THREE.Group();
+const ECI_AXES = [
+  { dir: [1, 0, 0], color: 0xff6b6b, text: 'X  ♈ vernal equinox' },
+  { dir: [0, 1, 0], color: 0x7fe08a, text: 'Y' },
+  { dir: [0, 0, 1], color: 0x6fa8ff, text: 'Z  north pole' },
+];
+ECI_AXES.forEach(a => { a.obj = arrow(a.dir, 1.9 * R_E, a.color); eciAxes.add(a.obj); });
+earthGroup.add(eciAxes);
+
+const lvlhAxes = new THREE.Group();
+const LVLH_AXES = [
+  { color: 0xff6b6b, text: 'R  radial' },
+  { color: 0x7fe08a, text: 'S  along-track' },
+  { color: 0x6fa8ff, text: 'W  cross-track' },
+];
+LVLH_AXES.forEach(a => { a.obj = arrow([1, 0, 0], 1, a.color); lvlhAxes.add(a.obj); });
+root.add(lvlhAxes);
+
+// ---------------------------------------------------------------------------
+// Tillstånd: tid, fokus, kameraram
+// ---------------------------------------------------------------------------
+const state = {
+  t: 0, playing: true, speed: 60,
+  focus: -1,                       // -1 = jorden, annars index i OBJECTS
+  view: 'eci', trailMode: 'inertial', trailLength: PERIOD,
+  fly: null,                       // pågående kameraflygning till nytt fokus
+  rootTween: 0,                    // mjuk övergång mellan ECI- och LVLH-vy
+};
+let offsets = trailOffsets(state.trailLength);
+
+function focusPosition(index, t) {
+  if (index < 0) return [0, 0, 0];
+  const s = stateAt(OBJECTS[index], t);
+  return [s[0], s[1], s[2]];
+}
+
+function flyTo(index, distance) {
+  state.fly = { from: index === state.focus ? null : state.focus, to: index, start: performance.now(),
+                d0: camera.position.length(), d1: distance, duration: 1600 };
+  state.focus = index;
+  if (index < 0 && state.view === 'lvlh') setView('eci');
+  updateChips();
+}
+
+function currentFocusPos() {
+  const target = focusPosition(state.focus, state.t);
+  if (!state.fly) return target;
+  const f = Math.min(1, (performance.now() - state.fly.start) / state.fly.duration);
+  const e = f < 0.5 ? 4 * f * f * f : 1 - Math.pow(-2 * f + 2, 3) / 2;      // mjuk start och inbromsning
+  const from = state.fly.from === null ? target
+    : state.fly.from === -1 ? [0, 0, 0] : focusPosition(state.fly.from, state.t);
+  return [0, 1, 2].map(i => from[i] + (target[i] - from[i]) * e);
+}
+
+// ---------------------------------------------------------------------------
+// Gränssnitt
+// ---------------------------------------------------------------------------
+const $ = id => document.getElementById(id);
+const fmtDist = m => m < 1 ? `${(m * 100).toFixed(1)} cm` : m < 1000 ? `${m.toFixed(1)} m`
+  : m < 1e5 ? `${(m / 1000).toFixed(2)} km` : `${Math.round(m / 1000).toLocaleString('en')} km`;
+const fmtRate = v => (v < 0 ? '−' : '+') + fmtSpeed(Math.abs(v));
+const fmtSpeed = v => v < 1 ? `${(v * 100).toFixed(1)} cm/s` : v < 1000 ? `${v.toFixed(2)} m/s` : `${(v / 1000).toFixed(3)} km/s`;
+function fmtMet(t) {
+  const d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60), s = Math.floor(t % 60);
+  return `T+ ${d} d ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function updateChips() {
+  document.querySelectorAll('#focus button').forEach(b => b.classList.toggle('on', +b.dataset.i === state.focus));
+}
+const focusBox = $('focus');
+[{ name: 'Earth', i: -1, color: '#6fa8ff' }, ...OBJECTS.map((o, i) => ({ name: o.name, i, color: o.color }))].forEach(o => {
+  const b = document.createElement('button');
+  b.dataset.i = o.i;
+  b.innerHTML = `<span class="chip-dot" style="background:${o.color}"></span>${o.name}`;
+  b.onclick = () => flyTo(o.i, o.i < 0 ? 2.6e7 : 60);
+  focusBox.appendChild(b);
+});
+updateChips();
+
+function setView(v) {
+  if (v === 'lvlh' && state.focus < 0) return;
+  state.view = v; state.rootTween = performance.now();
+  $('view-eci').classList.toggle('on', v === 'eci');
+  $('view-lvlh').classList.toggle('on', v === 'lvlh');
+}
+$('view-eci').onclick = () => setView('eci');
+$('view-lvlh').onclick = () => { if (state.focus < 0) flyTo(0, 200); setView('lvlh'); };
+
+function setTrailMode(m) {
+  state.trailMode = m;
+  $('trail-inertial').classList.toggle('on', m === 'inertial');
+  $('trail-relative').classList.toggle('on', m === 'relative');
+}
+$('trail-inertial').onclick = () => setTrailMode('inertial');
+$('trail-relative').onclick = () => { if (state.focus < 0) flyTo(0, 3000); setTrailMode('relative'); };
+$('trail-length').onchange = e => {
+  state.trailLength = e.target.value === 'orbit' ? PERIOD : +e.target.value;
+  offsets = trailOffsets(state.trailLength);
+};
+$('show-clouds').onchange = e => { clouds.visible = e.target.checked && !!cloudMaterial.map; };
+
+const SPEEDS = [[1, '1×'], [10, '10×'], [60, '1 min/s'], [600, '10 min/s'], [3600, '1 h/s'], [36000, '10 h/s']];
+SPEEDS.forEach(([v, label]) => {
+  const b = document.createElement('button');
+  b.textContent = label; b.dataset.v = v;
+  b.onclick = () => { state.speed = v; state.playing = true; refreshSpeed(); };
+  $('speeds').appendChild(b);
+});
+function refreshSpeed() {
+  document.querySelectorAll('#speeds button').forEach(b => b.classList.toggle('on', +b.dataset.v === state.speed));
+  $('play').textContent = state.playing ? '❚❚' : '▶';
+}
+refreshSpeed();
+$('play').onclick = () => { if (state.t >= T_END) state.t = 0; state.playing = !state.playing; refreshSpeed(); };
+window.addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); $('play').click(); } });
+const slider = $('slider');
+slider.max = T_END;
+slider.oninput = () => { state.t = +slider.value; };
+
+// Händelser: separationerna och närmaste passager
+const events = $('events');
+function addEvent(html, onclick) {
+  const b = document.createElement('button'); b.className = 'event'; b.innerHTML = html; b.onclick = onclick;
+  events.appendChild(b);
+}
+addEvent(`Separation sequence <small>T+ 0 s, 1×</small>`, () => {
+  state.t = 0; state.speed = 1; state.playing = true; refreshSpeed(); flyTo(0, 25);
+});
+DATA.closest_passes.slice(0, 4).forEach(p => {
+  const i = OBJECTS.findIndex(o => o.name === p.pair[0]);
+  addEvent(`${p.pair[0]} – ${p.pair[1]} <small>${fmtDist(p.distance_m)} at ${fmtMet(p.time_s).slice(3)}</small>`, () => {
+    state.t = Math.max(0, p.time_s - 300); state.speed = 10; state.playing = true; refreshSpeed();
+    flyTo(i, Math.max(3 * p.distance_m, 80));
+  });
+});
+
+// Etiketter
+const labelsBox = $('labels');
+OBJECTS.forEach((o, i) => {
+  o.label = document.createElement('div');
+  o.label.className = 'lab';
+  o.label.style.color = o.color;
+  o.label.innerHTML = `<div class="ring"></div><div class="txt">${o.name}<small></small></div>`;
+  o.label.onclick = () => flyTo(i, 60);
+  labelsBox.appendChild(o.label);
+});
+for (const a of [...ECI_AXES, ...LVLH_AXES]) {
+  a.label = document.createElement('div'); a.label.className = 'axis-lab';
+  a.label.style.color = '#' + a.color.toString(16).padStart(6, '0');
+  a.label.textContent = a.text; labelsBox.appendChild(a.label);
+}
+
+const tmpV = new THREE.Vector3();
+function placeLabel(el, worldPos, w, h) {
+  tmpV.copy(worldPos).project(camera);
+  const visible = tmpV.z < 1 && tmpV.z > -1 && Math.abs(tmpV.x) < 1.2 && Math.abs(tmpV.y) < 1.2;
+  el.style.display = visible ? 'block' : 'none';
+  if (visible) el.style.transform = `translate(${(tmpV.x + 1) / 2 * w}px, ${(1 - tmpV.y) / 2 * h}px)`;
+}
+
+// ---------------------------------------------------------------------------
+// Varje bildruta
+// ---------------------------------------------------------------------------
+const m3 = new THREE.Matrix4();
+const qTarget = new THREE.Quaternion(), qNow = new THREE.Quaternion().setFromRotationMatrix(ECI_TO_THREE);
+let lastFrame = performance.now(), lastInfo = 0;
+
+function frame(now) {
+  const dt = Math.min(0.1, (now - lastFrame) / 1000);
+  lastFrame = now;
+  if (state.playing) {
+    state.t += dt * state.speed;
+    if (state.t >= T_END) { state.t = T_END; state.playing = false; refreshSpeed(); }
+  }
+  const t = state.t;
+  slider.value = t;
+
+  // Flygningen till ett nytt fokus: avståndet ändras logaritmiskt (snabbt långt bort, långsamt nära)
+  if (state.fly) {
+    const f = Math.min(1, (now - state.fly.start) / state.fly.duration);
+    const e = f < 0.5 ? 4 * f * f * f : 1 - Math.pow(-2 * f + 2, 3) / 2;
+    const d = Math.exp(Math.log(state.fly.d0) + (Math.log(state.fly.d1) - Math.log(state.fly.d0)) * e);
+    camera.position.setLength(d);
+    if (f >= 1) state.fly = null;
+  }
+  const P = currentFocusPos();                         // flytande origo: allt ritas relativt fokus
+  const focusObj = state.focus >= 0 ? OBJECTS[state.focus] : null;
+  const focusState = focusObj ? stateAt(focusObj, t) : null;
+  const basis = focusState ? lvlh(focusState) : null;
+
+  // Kamerans ram: ECI (stjärnorna står still) eller LVLH (radiellt uppåt, längs banan åt höger)
+  if (state.view === 'lvlh' && basis) {
+    const [x, y, z] = basis;
+    m3.set(y[0], y[1], y[2], 0, x[0], x[1], x[2], 0, -z[0], -z[1], -z[2], 0, 0, 0, 0, 1);
+  } else {
+    m3.copy(ECI_TO_THREE);
+  }
+  qTarget.setFromRotationMatrix(m3);
+  const tween = Math.min(1, (now - state.rootTween) / 900);
+  if (tween < 1) qNow.slerp(qTarget, 0.12); else qNow.copy(qTarget);
+  root.matrix.makeRotationFromQuaternion(qNow);
+  root.matrixWorldNeedsUpdate = true;
+
+  // Jorden
+  earthGroup.position.set(-P[0], -P[1], -P[2]);
+  earthSpin.rotation.z = GMST0 + OMEGA * t;
+  const s = sunAt(t);
+  sun.position.set(s[0] * AU, s[1] * AU, s[2] * AU);
+  root.updateMatrixWorld(true);
+  const sunWorld = new THREE.Vector3(...s).applyMatrix4(new THREE.Matrix4().extractRotation(root.matrixWorld)).normalize();
+  earthUniforms.sunDir.value.copy(sunWorld);
+  sunLight.position.copy(sunWorld);
+
+  // I jordens skugga? (cylindrisk skugga är bra nog i LEO)
+  let inShadow = false;
+  if (focusState) {
+    const along = dot(focusState, s);
+    inShadow = along < 0 && norm(sub(focusState.slice(0, 3), s.map(c => c * along))) < R_E;
+  }
+  sunLight.intensity = inShadow ? 0 : 3.0;
+
+  // Objekten
+  const stage = stateAt(OBJECTS[0], t);
+  OBJECTS.forEach((o, i) => {
+    const attached = i > 0 && t < o.release;
+    const st = attached ? stage : stateAt(o, t);
+    o.now = st; o.attached = attached;
+    o.mesh.visible = !attached;
+    o.mesh.position.set(st[0] - P[0], st[1] - P[1], st[2] - P[2]);
+    const [x, y, z] = lvlh(st);
+    o.mesh.quaternion.setFromRotationMatrix(m3.makeBasis(new THREE.Vector3(...x), new THREE.Vector3(...y), new THREE.Vector3(...z)));
+  });
+
+  // Spåren
+  const relative = state.trailMode === 'relative' && focusObj;
+  const tmpS = new Float64Array(6), tmpF = new Float64Array(6);
+  OBJECTS.forEach((o, i) => {
+    const pos = o.trail.geometry.attributes.position.array;
+    const tMin = i > 0 ? o.release : 0;
+    let n = 0;
+    if (!o.attached && !(relative && i === state.focus)) {
+      for (let j = 0; j < offsets.length && n < TRAIL_POINTS_MAX; j++) {
+        const tau = Math.max(tMin, t - offsets[j]);
+        stateAt(o, tau, tmpS);
+        let v;
+        if (relative) {
+          // Relativt fokus i dess LVLH-ram då, uttryckt i dagens LVLH-ram → CW-slingorna
+          stateAt(focusObj, tau, tmpF);
+          const [bx, by, bz] = lvlh(tmpF);
+          const d = [tmpS[0] - tmpF[0], tmpS[1] - tmpF[1], tmpS[2] - tmpF[2]];
+          const l = [dot(d, bx), dot(d, by), dot(d, bz)];
+          const [cx, cy, cz] = basis;
+          v = [0, 1, 2].map(k => l[0] * cx[k] + l[1] * cy[k] + l[2] * cz[k]);
+        } else {
+          v = [tmpS[0] - P[0], tmpS[1] - P[1], tmpS[2] - P[2]];
+        }
+        pos[3 * n] = v[0]; pos[3 * n + 1] = v[1]; pos[3 * n + 2] = v[2];
+        n++;
+        if (tau === tMin) break;
+      }
+    }
+    o.trail.geometry.setDrawRange(0, n);
+    o.trail.geometry.attributes.position.needsUpdate = true;
+
+    // Banan framåt (bara i tröghetsläget): visar hela varvet även innan spåret hunnit bli långt
+    const ahead = o.ahead.geometry.attributes.position.array;
+    let m = 0;
+    if (!relative && !o.attached) {
+      for (let j = 0; j < AHEAD_OFFSETS.length && m < TRAIL_POINTS_MAX; j++) {
+        stateAt(o, Math.min(T_END, t + AHEAD_OFFSETS[j]), tmpS);
+        ahead[3 * m] = tmpS[0] - P[0]; ahead[3 * m + 1] = tmpS[1] - P[1]; ahead[3 * m + 2] = tmpS[2] - P[2];
+        m++;
+      }
+    }
+    o.ahead.geometry.setDrawRange(0, m);
+    o.ahead.geometry.attributes.position.needsUpdate = true;
+  });
+
+  // Axlarna
+  eciAxes.visible = $('show-eci').checked;
+  lvlhAxes.visible = $('show-lvlh').checked && !!basis;
+  const camDist = camera.position.length();
+  if (basis) {
+    LVLH_AXES.forEach((a, k) => {
+      a.obj.setDirection(new THREE.Vector3(...basis[k]));
+      a.obj.setLength(0.18 * camDist, 0.018 * camDist, 0.009 * camDist);
+    });
+  }
+
+  controls.update();
+  renderer.render(scene, camera);
+
+  // Etiketter
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  const showLabels = $('show-labels').checked;
+  const world = new THREE.Vector3();
+  OBJECTS.forEach((o, i) => {
+    if (!showLabels || o.attached) { o.label.style.display = 'none'; return; }
+    placeLabel(o.label, o.mesh.getWorldPosition(world), w, h);
+    const small = o.label.querySelector('small');
+    if (focusObj && i !== state.focus) small.textContent = fmtDist(norm(sub(o.now, focusState)));
+    else small.textContent = '';
+  });
+  ECI_AXES.forEach(a => {
+    if (!eciAxes.visible || !showLabels) { a.label.style.display = 'none'; return; }
+    placeLabel(a.label, world.set(...a.dir).multiplyScalar(2.0 * R_E).applyMatrix4(earthGroup.matrixWorld), w, h);
+  });
+  LVLH_AXES.forEach((a, k) => {
+    if (!lvlhAxes.visible || !showLabels) { a.label.style.display = 'none'; return; }
+    placeLabel(a.label, world.set(...basis[k]).multiplyScalar(0.2 * camDist).applyMatrix4(root.matrixWorld), w, h);
+  });
+
+  // Text: tid, skala, avstånd (uppdateras tio gånger per sekund)
+  if (now - lastInfo > 100) {
+    lastInfo = now;
+    $('utc').textContent = new Date(EPOCH_MS + t * 1000).toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+    $('met').textContent = `${fmtMet(t)}  ·  orbit ${(t / PERIOD + 1).toFixed(0)}`;
+    const attachedCount = OBJECTS.filter(o => o.attached).length;
+    $('status').textContent = [inShadow ? "In Earth's shadow" : '',
+      attachedCount ? `${attachedCount} satellite${attachedCount > 1 ? 's' : ''} still on the stage` : ''].filter(Boolean).join(' · ');
+
+    const mpp = 2 * camDist * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / h;
+    const raw = mpp * 120, p10 = Math.pow(10, Math.floor(Math.log10(raw)));
+    const nice = [1, 2, 5, 10].map(k => k * p10).filter(v => v <= raw).pop() || p10;
+    $('scalebar').style.width = `${nice / mpp}px`;
+    $('scaletext').textContent = fmtDist(nice);
+    $('camdist').textContent = `camera ${fmtDist(camDist)} from ${state.focus < 0 ? 'Earth centre' : OBJECTS[state.focus].name}`;
+
+    let html;
+    if (focusObj) {
+      const r = norm(focusState), v = Math.hypot(focusState[3], focusState[4], focusState[5]);
+      html = `<h4>${focusObj.name}</h4><div class="mono">altitude ${fmtDist(r - R_E)} · speed ${fmtSpeed(v)}</div>
+        <table class="mono"><tr class="k"><td>to</td><td>distance</td><td title="Change in distance per second; negative = approaching">range rate</td></tr>`;
+      OBJECTS.forEach((o, i) => {
+        if (i === state.focus || o.attached) return;
+        const d = sub(o.now, focusState), dv = sub(o.now.slice(3), focusState.slice(3));
+        const rate = dot(d, dv) / norm(d);          // samma i alla koordinatsystem
+        html += `<tr><td style="color:${o.color}">${o.name}</td><td>${fmtDist(norm(d))}</td><td>${fmtRate(rate)}</td></tr>`;
+      });
+      html += '</table>';
+    } else {
+      html = `<h4>Earth</h4><div class="mono">sidereal angle ${((GMST0 + OMEGA * t) * 180 / Math.PI % 360).toFixed(1)}°
+        · orbit ${(DATA.orbit.altitude_m / 1000).toFixed(0)} km, ${DATA.orbit.inclination_deg}°</div>
+        <div class="mono k" style="color:var(--muted)">ascending node ${DATA.orbit.ltan_hours.toFixed(1).replace('.5', ':30').replace('.0', ':00')} local time</div>`;
+    }
+    $('info').innerHTML = html;
+  }
+  requestAnimationFrame(frame);
+}
+
+function resize() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Börja med jorden i bild, med steget mitt framför kameran
+const s0 = stateAt(OBJECTS[0], 0);
+camera.position.copy(new THREE.Vector3(s0[0], s0[1], s0[2]).normalize().applyMatrix4(ECI_TO_THREE)
+  .add(new THREE.Vector3(0, 0.25, 0)).normalize().multiplyScalar(2.6e7));
+
+Promise.allSettled([loadEarth(), loadStars()]).then(results => {
+  const failed = results.filter(r => r.status === 'rejected');
+  $('loading').style.opacity = 0;
+  if (failed.length) $('status').textContent = 'Could not load Earth textures or stars (offline?)';
+  window.__sepsimReady = true;
+});
+window.sepsim = { state, flyTo, setView, setTrailMode, OBJECTS };
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
